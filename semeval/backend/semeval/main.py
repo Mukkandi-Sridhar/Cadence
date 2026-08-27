@@ -50,18 +50,25 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Root Route & API Routers ──────────────────────────────────────────────
+    # ── Root Route ─────────────────────────────────────────────────────────────
     @app.get("/", include_in_schema=False)
     async def root_index() -> dict[str, str]:
         return {
-            "name": "Semeval — Seminar Evaluation API",
+            "name": "Cadence — Seminar Evaluation API",
             "version": "0.1.0",
             "docs": "/docs",
             "health": "/api/v1/health",
+            "evaluate": "/api/v1/evaluate",
+            "sessions": "/api/v1/sessions",
+            "stream": "/api/v1/stream/{recording_id}",
         }
 
-    from semeval.api.routers import health
+    # ── API Routers ────────────────────────────────────────────────────────────
+    from semeval.api.routers import evaluate, health, sessions, stream
     app.include_router(health.router, prefix="/api/v1")
+    app.include_router(sessions.router, prefix="/api/v1")
+    app.include_router(evaluate.router, prefix="/api/v1")
+    app.include_router(stream.router, prefix="/api/v1")
 
     return app
 

@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { useRecordingStore, LiveTranscriptItem } from "../store/recordingStore";
 import { useEvaluationStore, EvaluationStage } from "../store/evaluationStore";
 
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
 export function useEventSource(recordingId: string | null) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const { addTranscriptItem, setAudioHealth } = useRecordingStore();
@@ -10,8 +12,15 @@ export function useEventSource(recordingId: string | null) {
   useEffect(() => {
     if (!recordingId) return;
 
-    const sseUrl = `/api/v1/stream/${recordingId}`;
-    const es = new EventSource(sseUrl);
+    const sseUrl = `${API_BASE}/api/v1/stream/${recordingId}`;
+
+    let es: EventSource;
+    try {
+      es = new EventSource(sseUrl);
+    } catch (err) {
+      console.warn("SSE connection failed (non-critical in offline mode):", err);
+      return;
+    }
     eventSourceRef.current = es;
 
     es.addEventListener("transcript", (event: MessageEvent) => {
@@ -41,8 +50,8 @@ export function useEventSource(recordingId: string | null) {
       }
     });
 
-    es.onerror = (err) => {
-      console.warn("SSE connection interrupted, retrying automatically...", err);
+    es.onerror = () => {
+      // Non-fatal — SSE reconnects automatically or may not be available in dev
     };
 
     return () => {

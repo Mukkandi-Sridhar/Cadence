@@ -62,7 +62,8 @@ export default function LiveRecording() {
     await releaseScreenWakeLock();
     setShowStopModal(false);
     setStage("TRANSCRIBING", 10);
-    navigate("/sessions/active/evaluating");
+    const sid = useSessionStore.getState().sessionId || "active";
+    navigate(`/sessions/${sid}/evaluating`);
   }
 
   function formatTime(sec: number) {

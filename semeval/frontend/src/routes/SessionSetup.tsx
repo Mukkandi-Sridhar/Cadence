@@ -5,6 +5,8 @@ import { MicLevelMeter } from "../components/MicLevelMeter";
 import { useSessionStore } from "../store/sessionStore";
 import { useAudioCapture } from "../hooks/useAudioCapture";
 
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
 export default function SessionSetup() {
   const navigate = useNavigate();
   const {
@@ -56,7 +58,7 @@ export default function SessionSetup() {
     }
   }
 
-  function handleStartSession() {
+  async function handleStartSession() {
     if (!topic.trim()) {
       setValidationError("Please enter a seminar topic.");
       return;
@@ -66,10 +68,31 @@ export default function SessionSetup() {
       return;
     }
 
-    const newSessionId = `sess-${Date.now()}`;
-    setSessionId(newSessionId);
+    let sessionId = `sess-${Date.now()}`;
+
+    // Create session in backend
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/sessions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic,
+          coverage_points: coveragePoints,
+          target_duration_seconds: targetDurationSeconds,
+          presenter_names: presenterQueue.map((p) => p.name),
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        sessionId = data.id;
+      }
+    } catch (err) {
+      console.warn("Backend session create failed, using local ID:", err);
+    }
+
+    setSessionId(sessionId);
     setActivePresenterIndex(0);
-    navigate(`/sessions/${newSessionId}/record`);
+    navigate(`/sessions/${sessionId}/record`);
   }
 
   return (

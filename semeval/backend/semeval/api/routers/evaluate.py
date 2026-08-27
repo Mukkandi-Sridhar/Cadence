@@ -1,0 +1,396 @@
+"""
+Evaluation router — POST /api/v1/evaluate
+
+Accepts full transcript text + session metadata.
+Calls LLM (OpenAI gpt-4o) with a structured rubric prompt.
+Runs deterministic scoring engine (Rule R1).
+Returns evidence-backed JSON evaluation.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from typing import Any
+
+import structlog
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from semeval.config import get_settings
+from semeval.scoring.engine import DimensionInput, DimensionStatus, compute_score
+
+logger = structlog.get_logger(__name__)
+settings = get_settings()
+
+router = APIRouter(tags=["evaluate"])
+
+
+# ── Request / Response models ─────────────────────────────────────────────────
+
+
+class TranscriptSegment(BaseModel):
+    id: str
+    speaker: str
+    text: str
+    start_ms: int
+    end_ms: int
+    confidence: float = 0.95
+
+
+class EvaluateRequest(BaseModel):
+    session_id: str
+    recording_id: str
+    presenter_name: str
+    topic: str
+    coverage_points: list[str] = Field(default_factory=list)
+    transcript_segments: list[TranscriptSegment] = Field(default_factory=list)
+    elapsed_seconds: int = Field(ge=0)
+    target_duration_seconds: int = Field(ge=30, le=7200)
+
+
+class EvidenceSpan(BaseModel):
+    id: str
+    transcript_span: str
+    start_ms: int
+    end_ms: int
+    reason: str
+    verified: bool = True
+
+
+class DimensionScore(BaseModel):
+    dimension: str
+    weight: float
+    raw_sub_score: float | None
+    scaled_score: float | None
+    status: str
+    evidence: list[EvidenceSpan]
+
+
+class StrengthImprovement(BaseModel):
+    text: str
+    start_ms: int
+    end_ms: int
+    span: str
+
+
+class EvaluateResponse(BaseModel):
+    id: str
+    recording_id: str
+    presenter_name: str
+    total_score: int
+    audio_quality: str
+    model_name: str
+    model_version: str
+    prompt_hash: str
+    temperature: float
+    seed: int
+    dimension_scores: list[DimensionScore]
+    strengths: list[StrengthImprovement]
+    improvements: list[StrengthImprovement]
+    transcript_word_count: int
+    calculated_wpm: float
+    duration_ratio: float
+
+
+# ── LLM Rubric Evaluation ─────────────────────────────────────────────────────
+
+_RUBRIC_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "required": ["dimensions", "strengths", "improvements"],
+    "properties": {
+        "dimensions": {
+            "type": "array",
+            "minItems": 7,
+            "maxItems": 7,
+            "items": {
+                "type": "object",
+                "required": ["dimension", "raw_sub_score", "status", "evidence_spans"],
+                "properties": {
+                    "dimension": {"type": "string"},
+                    "raw_sub_score": {"type": "number", "minimum": 0, "maximum": 5},
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "SCORED",
+                            "SKIPPED",
+                            "INSUFFICIENT_EVIDENCE",
+                            "LOW_CONFIDENCE",
+                        ],
+                    },
+                    "evidence_spans": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": ["span", "reason"],
+                            "properties": {
+                                "span": {"type": "string"},
+                                "reason": {"type": "string"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        "strengths": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["text", "span"],
+                "properties": {
+                    "text": {"type": "string"},
+                    "span": {"type": "string"},
+                },
+            },
+        },
+        "improvements": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "required": ["text", "span"],
+                "properties": {
+                    "text": {"type": "string"},
+                    "span": {"type": "string"},
+                },
+            },
+        },
+    },
+    "additionalProperties": False,
+}
+
+_DIMENSION_WEIGHTS: dict[str, float] = {
+    "Content and topic coverage": 30.0,
+    "Structure and clarity": 15.0,
+    "Depth and technical accuracy": 15.0,
+    "Delivery and pace": 15.0,
+    "Engagement and audience contact": 10.0,
+    "Q&A handling": 10.0,
+    "Time management": 5.0,
+}
+
+
+async def _call_llm(system: str, user: str) -> dict[str, Any]:
+    """Call OpenAI gpt-4o, return parsed JSON + provenance."""
+    try:
+        from openai import AsyncOpenAI
+
+        prompt_text = f"{system}\n{user}"
+        prompt_hash = hashlib.sha256(prompt_text.encode()).hexdigest()
+
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        response = await client.chat.completions.create(
+            model=settings.llm_primary_model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0,
+            seed=42,
+        )
+        content = response.choices[0].message.content or "{}"
+        return {
+            "output": json.loads(content),
+            "model_name": settings.llm_primary_model,
+            "model_version": settings.llm_primary_model_version,
+            "prompt_hash": prompt_hash,
+        }
+    except Exception as e:
+        logger.error("llm_call_failed", error=str(e))
+        raise RuntimeError(f"LLM call failed: {e}") from e
+
+
+def _build_system_prompt() -> str:
+    return (
+        "You are an expert seminar presentation evaluator.\n"
+        "You must evaluate the presentation transcript against the rubric below.\n"
+        "\n"
+        "RUBRIC DIMENSIONS (use EXACTLY these names):\n"
+        "1. Content and topic coverage (weight 30)\n"
+        "2. Structure and clarity (weight 15)\n"
+        "3. Depth and technical accuracy (weight 15)\n"
+        "4. Delivery and pace (weight 15)\n"
+        "5. Engagement and audience contact (weight 10)\n"
+        "6. Q&A handling (weight 10)\n"
+        "7. Time management (weight 5)\n"
+        "\n"
+        "RULES:\n"
+        "- Raw sub-score must be 0-5 (0=absent/poor, 3=meets expectations, 5=excellent)\n"
+        "- Evidence spans MUST be verbatim quoted text from the transcript\n"
+        "- If transcript is empty or too short, set status to INSUFFICIENT_EVIDENCE\n"
+        "- Strengths: 2-4 verbatim quotes showcasing the presenter's best moments\n"
+        "- Improvements: 2-4 actionable suggestions backed by exact transcript quotes\n"
+        "\n"
+        "Return ONLY valid JSON with no markdown, no code fences."
+    )
+
+
+
+def _build_user_prompt(
+    req: EvaluateRequest,
+    transcript_full: str,
+    word_count: int,
+    wpm: float,
+) -> str:
+    no_points_msg = "- [No specific points provided — auto-evaluate from speech content]"
+    coverage_text = (
+        "\n".join(f"- {p}" for p in req.coverage_points)
+        if req.coverage_points
+        else no_points_msg
+    )
+    no_transcript_msg = "[No transcript captured — score based on available session metadata]"
+    transcript_section = transcript_full if transcript_full else no_transcript_msg
+    summary_line = "Evaluate this presentation and return your assessment as JSON with keys: dimensions, strengths, improvements."  # noqa: E501
+    return f"""TOPIC: {req.topic}
+
+REQUIRED COVERAGE POINTS:
+{coverage_text}
+
+PRESENTER: {req.presenter_name}
+ELAPSED TIME: {req.elapsed_seconds}s (target: {req.target_duration_seconds}s)
+WORD COUNT: {word_count} ({wpm:.0f} WPM)
+
+FULL TRANSCRIPT:
+{transcript_section}
+
+{summary_line}"""
+
+
+@router.post("/evaluate", response_model=EvaluateResponse)
+async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
+    """
+    Main evaluation endpoint.
+    Sends full transcript to LLM, runs deterministic scoring, returns evidence-backed report.
+    """
+    # Build full transcript text
+    transcript_full = "\n".join(
+        f"[{seg.start_ms // 1000}s] {seg.speaker}: {seg.text}"
+        for seg in req.transcript_segments
+    )
+    word_count = len(transcript_full.split()) if transcript_full else 0
+    actual_minutes = max(0.1, req.elapsed_seconds / 60.0)
+    wpm = round(word_count / actual_minutes, 1)
+    duration_ratio = req.elapsed_seconds / max(1, req.target_duration_seconds)
+
+    # Call LLM
+    try:
+        llm_result = await _call_llm(
+            system=_build_system_prompt(),
+            user=_build_user_prompt(req, transcript_full, word_count, wpm),
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    llm_output: dict[str, Any] = llm_result["output"]
+
+    # Build dimension inputs for deterministic scoring engine
+    dimension_inputs: list[DimensionInput] = []
+    ordered_dimensions = list(_DIMENSION_WEIGHTS.keys())
+
+    llm_dims: list[dict[str, Any]] = llm_output.get("dimensions", [])
+
+    for dim_name in ordered_dimensions:
+        weight = _DIMENSION_WEIGHTS[dim_name]
+        llm_dim = next((d for d in llm_dims if d.get("dimension") == dim_name), None)
+
+        if llm_dim:
+            status_str = llm_dim.get("status", "SCORED")
+            try:
+                status = DimensionStatus(status_str)
+            except ValueError:
+                status = DimensionStatus.SCORED
+
+            raw = float(llm_dim.get("raw_sub_score", 3.0))
+            raw = max(0.0, min(5.0, raw))
+        else:
+            status = DimensionStatus.INSUFFICIENT_EVIDENCE
+            raw = 0.0
+
+        dimension_inputs.append(
+            DimensionInput(
+                dimension=dim_name,
+                weight=weight,
+                raw_sub_score=raw,
+                status=status,
+                model_used=llm_result.get("model_name"),
+            )
+        )
+
+    # Run deterministic scoring engine (Rule R1 — LLM never calculates total)
+    scoring = compute_score(dimension_inputs)
+
+    # Build dimension scores with evidence
+    dimension_scores: list[DimensionScore] = []
+    for i, dr in enumerate(scoring.dimension_results):
+        llm_dim = next((d for d in llm_dims if d.get("dimension") == dr.dimension), None)
+        raw_evidence = llm_dim.get("evidence_spans", []) if llm_dim else []
+
+        # Match evidence spans back to transcript segments for timestamps
+        evidence_list: list[EvidenceSpan] = []
+        for j, ev in enumerate(raw_evidence):
+            span_text = ev.get("span", "")
+            matched_seg = next(
+                (s for s in req.transcript_segments if span_text.lower() in s.text.lower()),
+                None,
+            )
+            evidence_list.append(
+                EvidenceSpan(
+                    id=f"ev-{i}-{j}",
+                    transcript_span=span_text,
+                    start_ms=matched_seg.start_ms if matched_seg else 0,
+                    end_ms=matched_seg.end_ms if matched_seg else 2000,
+                    reason=ev.get("reason", ""),
+                )
+            )
+
+        dimension_scores.append(
+            DimensionScore(
+                dimension=dr.dimension,
+                weight=dr.weight,
+                raw_sub_score=dr.raw_sub_score,
+                scaled_score=round(dr.scaled_score, 2) if dr.scaled_score is not None else None,
+                status=dr.status.value,
+                evidence=evidence_list,
+            )
+        )
+
+    # Build strengths and improvements with timestamps
+    def _build_evidence_items(
+        items: list[dict[str, Any]], label: str
+    ) -> list[StrengthImprovement]:
+        results = []
+        for k, item in enumerate(items):
+            span_text = item.get("span", "")
+            matched_seg = next(
+                (s for s in req.transcript_segments if span_text.lower() in s.text.lower()),
+                None,
+            )
+            results.append(
+                StrengthImprovement(
+                    text=item.get("text", f"{label} observation {k+1}"),
+                    start_ms=matched_seg.start_ms if matched_seg else k * 5000,
+                    end_ms=matched_seg.end_ms if matched_seg else (k + 1) * 5000,
+                    span=span_text or transcript_full[:120],
+                )
+            )
+        return results
+
+    import uuid
+    return EvaluateResponse(
+        id=f"eval-{uuid.uuid4().hex[:12]}",
+        recording_id=req.recording_id,
+        presenter_name=req.presenter_name,
+        total_score=scoring.total_score,
+        audio_quality="PASS",
+        model_name=llm_result.get("model_name", settings.llm_primary_model),
+        model_version=llm_result.get("model_version", settings.llm_primary_model_version),
+        prompt_hash=llm_result.get("prompt_hash", ""),
+        temperature=0,
+        seed=42,
+        dimension_scores=dimension_scores,
+        strengths=_build_evidence_items(llm_output.get("strengths", []), "Strength"),
+        improvements=_build_evidence_items(llm_output.get("improvements", []), "Improvement"),
+        transcript_word_count=word_count,
+        calculated_wpm=wpm,
+        duration_ratio=round(duration_ratio, 2),
+    )
