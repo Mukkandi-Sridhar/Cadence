@@ -1,5 +1,3 @@
-import { useEvaluationStore } from "../store/evaluationStore";
-
 interface EvidenceSpanProps {
   span: string;
   startMs: number;
@@ -9,8 +7,6 @@ interface EvidenceSpanProps {
 }
 
 export function EvidenceSpan({ span, startMs, reason, verified = true }: EvidenceSpanProps) {
-  const seekToAudioMs = useEvaluationStore((state) => state.seekToAudioMs);
-
   function formatTime(ms: number) {
     const totalSec = Math.floor(ms / 1000);
     const mins = Math.floor(totalSec / 60);
@@ -21,15 +17,10 @@ export function EvidenceSpan({ span, startMs, reason, verified = true }: Evidenc
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-3 text-sm hover:border-brand-500/40 transition-all">
       <div className="flex items-center justify-between">
-        <button
-          onClick={() => seekToAudioMs(startMs)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-brand-600/20 px-2.5 py-1 font-mono text-xs font-semibold text-brand-300 hover:bg-brand-600 hover:text-white transition-colors"
-        >
-          <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z" />
-          </svg>
+        <span className="inline-flex items-center gap-1.5 rounded-md bg-brand-600/20 px-2.5 py-1 font-mono text-xs font-semibold text-brand-300 border border-brand-500/30">
+          <span>⏱</span>
           <span>{formatTime(startMs)}</span>
-        </button>
+        </span>
         {verified && (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-success">
             <span>✓ Verbatim Match</span>

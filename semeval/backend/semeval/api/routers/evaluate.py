@@ -273,10 +273,16 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
     Main evaluation endpoint.
     Sends full transcript to LLM, runs deterministic scoring, returns evidence-backed report.
     """
+    # Bound transcript segments strictly up to the stop recording cutoff timestamp
+    cutoff_ms = req.elapsed_seconds * 1000 if req.elapsed_seconds > 0 else 7200000
+    bounded_segments = [
+        seg for seg in req.transcript_segments if seg.start_ms <= cutoff_ms
+    ]
+
     # Build full transcript text
     transcript_full = "\n".join(
         f"[{seg.start_ms // 1000}s] {seg.speaker}: {seg.text}"
-        for seg in req.transcript_segments
+        for seg in bounded_segments
     )
     word_count = len(transcript_full.split()) if transcript_full else 0
     actual_minutes = max(0.1, req.elapsed_seconds / 60.0)

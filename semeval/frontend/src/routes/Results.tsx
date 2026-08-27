@@ -1,7 +1,6 @@
 import { Header } from "../components/Header";
 import { ScoreRadial } from "../components/ScoreRadial";
 import { EvidenceSpan } from "../components/EvidenceSpan";
-import { AudioPlayer } from "../components/AudioPlayer";
 import { OverridePanel } from "../components/OverridePanel";
 import { useEvaluationStore } from "../store/evaluationStore";
 import { useSessionStore } from "../store/sessionStore";
@@ -115,10 +114,8 @@ export default function Results() {
               </div>
             </div>
 
-            {/* Right 2 Columns — Audio Player, Strengths, Improvements */}
+            {/* Right 2 Columns — Strengths, Improvements */}
             <div className="lg:col-span-2 flex flex-col gap-6">
-              {/* Audio Player Component */}
-              <AudioPlayer />
 
               {/* Strengths Card */}
               <div className="glass-card p-6 flex flex-col gap-4">
