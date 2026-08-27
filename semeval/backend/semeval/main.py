@@ -52,7 +52,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Root Route ─────────────────────────────────────────────────────────────
+    # ── Root & Health Check Routes ─────────────────────────────────────────────
     @app.get("/", include_in_schema=False)
     async def root_index() -> dict[str, str]:
         return {
@@ -64,6 +64,11 @@ def create_app() -> FastAPI:
             "sessions": "/api/v1/sessions",
             "stream": "/api/v1/stream/{recording_id}",
         }
+
+    @app.get("/health", include_in_schema=False)
+    @app.get("/api/v1/health", include_in_schema=False)
+    async def direct_health_check() -> dict[str, str]:
+        return {"status": "ok", "version": "0.1.0"}
 
     # ── API Routers ────────────────────────────────────────────────────────────
     app.include_router(health.router, prefix="/api/v1")
