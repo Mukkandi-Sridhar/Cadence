@@ -14,6 +14,30 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _strip_non_ascii(v: str, label: str) -> str:
+    """
+    Strip whitespace and non-ASCII characters (smart quotes, zero-width
+    spaces, etc. from copy-pasting env vars into a dashboard). These values
+    end up in HTTP headers, which must be ASCII, so a stray character
+    otherwise breaks every call with a cryptic UnicodeEncodeError deep
+    inside httpx. Cleaned rather than rejected outright — raising in a
+    field_validator would crash the whole app at import time (blocking
+    every route, not just the ones using this value) over one bad env var.
+    """
+    cleaned = v.strip()
+    ascii_only = cleaned.encode("ascii", errors="ignore").decode("ascii")
+    if ascii_only != cleaned:
+        import warnings
+
+        warnings.warn(
+            f"{label} contained non-ASCII characters (likely from "
+            "copy-pasting) — they were stripped. Re-paste it via a plain "
+            "text editor if calls using it still fail.",
+            stacklevel=2,
+        )
+    return ascii_only
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -37,6 +61,15 @@ class Settings(BaseSettings):
     supabase_url: str = Field(default="")
     supabase_anon_key: str = Field(default="")
     supabase_service_role_key: str = Field(default="")
+
+    @field_validator("supabase_url", "supabase_anon_key", "supabase_service_role_key")
+    @classmethod
+    def _clean_supabase_value(cls, v: str) -> str:
+        """Same non-ASCII cleanup as openai_api_key — these also go into
+        HTTP headers for the Supabase client, and a stray copy-pasted
+        character here breaks every Supabase call with the same kind of
+        cryptic UnicodeEncodeError."""
+        return _strip_non_ascii(v, "SUPABASE key/url")
 
     # ── Redis ─────────────────────────────────────────────────────────────────
     redis_url: str = Field(default="redis://localhost:6379/0")
@@ -69,27 +102,7 @@ class Settings(BaseSettings):
     @field_validator("openai_api_key")
     @classmethod
     def _clean_openai_api_key(cls, v: str) -> str:
-        """
-        Strip whitespace and non-ASCII characters (smart quotes, zero-width
-        spaces, etc. from copy-pasting). HTTP headers (the Authorization
-        header this key goes into) must be ASCII, so a stray character
-        otherwise breaks every OpenAI call with a cryptic UnicodeEncodeError
-        deep inside httpx. Cleaned rather than rejected outright — raising
-        here would crash the whole app at import time (blocking every
-        route, not just OpenAI calls) over one bad env var.
-        """
-        cleaned = v.strip()
-        ascii_only = cleaned.encode("ascii", errors="ignore").decode("ascii")
-        if ascii_only != cleaned:
-            import warnings
-
-            warnings.warn(
-                "OPENAI_API_KEY contained non-ASCII characters (likely from "
-                "copy-pasting) — they were stripped. Re-paste it via a plain "
-                "text editor if OpenAI calls still fail.",
-                stacklevel=2,
-            )
-        return ascii_only
+        return _strip_non_ascii(v, "OPENAI_API_KEY")
 
     # ── ASR ───────────────────────────────────────────────────────────────────
     asr_adapter: Literal["faster_whisper", "deepgram", "assemblyai"] = Field(
