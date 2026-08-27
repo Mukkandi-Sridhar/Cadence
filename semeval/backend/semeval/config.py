@@ -70,23 +70,26 @@ class Settings(BaseSettings):
     @classmethod
     def _clean_openai_api_key(cls, v: str) -> str:
         """
-        Strip incidental whitespace and fail fast on non-ASCII characters.
-        HTTP headers (the Authorization header this key goes into) must be
-        ASCII — a stray character from copy-pasting the key (smart quotes,
-        zero-width spaces, etc.) otherwise breaks every OpenAI call with a
-        cryptic UnicodeEncodeError deep inside httpx instead of a clear
-        error here at startup.
+        Strip whitespace and non-ASCII characters (smart quotes, zero-width
+        spaces, etc. from copy-pasting). HTTP headers (the Authorization
+        header this key goes into) must be ASCII, so a stray character
+        otherwise breaks every OpenAI call with a cryptic UnicodeEncodeError
+        deep inside httpx. Cleaned rather than rejected outright — raising
+        here would crash the whole app at import time (blocking every
+        route, not just OpenAI calls) over one bad env var.
         """
         cleaned = v.strip()
-        try:
-            cleaned.encode("ascii")
-        except UnicodeEncodeError as e:
-            msg = (
-                "OPENAI_API_KEY contains a non-ASCII character (likely from "
-                "copy-pasting) — re-paste it via a plain text editor first."
+        ascii_only = cleaned.encode("ascii", errors="ignore").decode("ascii")
+        if ascii_only != cleaned:
+            import warnings
+
+            warnings.warn(
+                "OPENAI_API_KEY contained non-ASCII characters (likely from "
+                "copy-pasting) — they were stripped. Re-paste it via a plain "
+                "text editor if OpenAI calls still fail.",
+                stacklevel=2,
             )
-            raise ValueError(msg) from e
-        return cleaned
+        return ascii_only
 
     # ── ASR ───────────────────────────────────────────────────────────────────
     asr_adapter: Literal["faster_whisper", "deepgram", "assemblyai"] = Field(
