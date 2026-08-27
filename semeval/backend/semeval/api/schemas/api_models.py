@@ -17,7 +17,7 @@ class SessionCreate(BaseModel):
     event_id: str
     rubric_version_id: str
     topic: str = Field(..., min_length=3, max_length=500)
-    coverage_points: list[str] = Field(default_factory=list, min_length=1)
+    coverage_points: list[str] = Field(default_factory=list, min_length=0)
     target_duration_s: int = Field(..., ge=30, le=7200)
     grace_period_s: int = Field(default=60, ge=0, le=300)
     min_duration_s: int = Field(default=120, ge=30, le=600)

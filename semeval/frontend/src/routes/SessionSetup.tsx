@@ -61,10 +61,6 @@ export default function SessionSetup() {
       setValidationError("Please enter a seminar topic.");
       return;
     }
-    if (coveragePoints.length === 0) {
-      setValidationError("Please add at least one expected coverage point.");
-      return;
-    }
     if (presenterQueue.length === 0) {
       setValidationError("Please add at least one presenter to the queue.");
       return;
@@ -120,10 +116,13 @@ export default function SessionSetup() {
 
               {/* Coverage Points */}
               <div className="glass-card p-6 flex flex-col gap-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-1">
                   <label className="text-sm font-bold uppercase tracking-wider text-brand-300">
-                    Expected Coverage Points * ({coveragePoints.length})
+                    Expected Coverage Points (Optional) ({coveragePoints.length})
                   </label>
+                  <p className="text-xs text-white/50">
+                    Optional — If left empty, AI agents will automatically synthesize and evaluate key coverage points directly from your topic and speech content.
+                  </p>
                 </div>
 
                 <form onSubmit={handleAddPoint} className="flex gap-2">
@@ -141,7 +140,7 @@ export default function SessionSetup() {
 
                 <div className="flex flex-col gap-2 mt-2">
                   {coveragePoints.length === 0 ? (
-                    <p className="text-xs text-white/40 italic">No coverage points added yet. Add required concepts above.</p>
+                    <p className="text-xs text-white/40 italic">No manual points added. AI will auto-extract coverage points from your topic.</p>
                   ) : (
                     coveragePoints.map((point, idx) => (
                       <div
