@@ -132,7 +132,12 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      VITE_API_URL: http://localhost:8000
+      # BACKEND_URL: used by vite.config.ts server-side proxy only (not sent to browser)
+      # Points to the backend Docker service name so Vite can forward /api/* requests
+      BACKEND_URL: http://backend:8000
+      # VITE_API_URL: empty string = use Vite's /api proxy (correct for dev + Docker)
+      # In production on Render, set this to the backend's public URL
+      VITE_API_URL: ""
     command: npm run dev -- --host 0.0.0.0
 
 volumes:
