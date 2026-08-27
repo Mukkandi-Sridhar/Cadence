@@ -8,7 +8,6 @@ export function Header() {
   const navLinks = [
     { label: "New Session", path: "/sessions/new" },
     { label: "Live Record", path: "/sessions/s1/record" },
-    { label: "Evaluating", path: "/sessions/s1/evaluating" },
     { label: "Results", path: "/sessions/s1/results/p1" },
     { label: "Dashboard", path: "/sessions/s1/dashboard" },
   ];
