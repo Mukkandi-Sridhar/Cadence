@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { saveAudioChunk } from "../lib/idb";
 import { useRecordingStore } from "../store/recordingStore";
+import { useSessionStore } from "../store/sessionStore";
 
 export function useAudioCapture() {
   const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
@@ -9,10 +10,15 @@ export function useAudioCapture() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const speechRecognitionRef = useRef<unknown>(null);
   const chunkSeqRef = useRef<number>(0);
   const animFrameRef = useRef<number | null>(null);
+  const recordingStartTimeRef = useRef<number>(0);
 
-  const { isRecording, setAudioHealth } = useRecordingStore();
+  const { isRecording, setAudioHealth, addTranscriptItem } = useRecordingStore();
+  const { presenterQueue, activePresenterIndex } = useSessionStore();
+
+  const activePresenterName = presenterQueue[activePresenterIndex]?.name || "Presenter";
 
   const requestMicPermission = useCallback(async (deviceId: string = "default") => {
     try {
@@ -78,6 +84,9 @@ export function useAudioCapture() {
     if (!stream) return;
 
     chunkSeqRef.current = 0;
+    recordingStartTimeRef.current = Date.now();
+
+    // MediaRecorder for local durable audio chunking
     const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
     mediaRecorderRef.current = mediaRecorder;
 
@@ -104,11 +113,63 @@ export function useAudioCapture() {
     };
 
     mediaRecorder.start(2000); // 2-second durable chunk interval
-  }, [requestMicPermission]);
+
+    // Live Web Speech Recognition (Real-Time ASR)
+    const windowObj = window as unknown as Record<string, unknown>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechRecognition = (windowObj.SpeechRecognition || windowObj.webkitSpeechRecognition) as any;
+    if (SpeechRecognition) {
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onresult = (event: { resultIndex: number; results: Array<Array<{ transcript: string; confidence?: number }> & { isFinal?: boolean }> }) => {
+          const now = Date.now();
+          const startMs = now - recordingStartTimeRef.current;
+          const endMs = startMs + 2000;
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const res = event.results[i];
+            const text = res[0].transcript.trim();
+            const confidence = res[0].confidence || 0.95;
+
+            if (text && res.isFinal) {
+              addTranscriptItem({
+                id: `tr-${now}-${i}`,
+                speaker: activePresenterName,
+                speakerRole: "PRESENTER",
+                text,
+                startMs: Math.max(0, startMs - 2000),
+                endMs,
+                confidence: Math.round(confidence * 100) / 100,
+              });
+            }
+          }
+        };
+
+        recognition.onerror = (err: { error: string }) => {
+          console.warn("Speech recognition notice:", err.error);
+        };
+
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      } catch (err) {
+        console.warn("Speech recognition initialization notice:", err);
+      }
+    }
+  }, [requestMicPermission, addTranscriptItem, activePresenterName]);
 
   const stopCapture = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
+    }
+    if (speechRecognitionRef.current) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (speechRecognitionRef.current as any).stop();
+      } catch (e) {}
     }
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
