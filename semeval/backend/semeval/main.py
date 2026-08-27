@@ -52,19 +52,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Root & Health Check Routes ─────────────────────────────────────────────
-    @app.get("/", include_in_schema=False)
-    async def root_index() -> dict[str, str]:
-        return {
-            "name": "Cadence — Presentation Evaluation API",
-            "version": "0.1.0",
-            "docs": "/docs",
-            "health": "/api/v1/health",
-            "events": "/api/v1/events",
-            "presentations": "/api/v1/events/{event_id}/presentations",
-            "score": "/api/v1/presentations/{presentation_id}/score",
-        }
-
+    # ── Health Check Routes ──────────────────────────────────────────────────────
     @app.get("/health", include_in_schema=False)
     @app.get("/api/v1/health", include_in_schema=False)
     async def direct_health_check() -> dict[str, str]:
@@ -107,6 +95,20 @@ def create_app() -> FastAPI:
             if full_path and os.path.exists(target_path) and os.path.isfile(target_path):
                 return FileResponse(target_path)
             return FileResponse(index_file)
+    else:
+        # No built frontend available (e.g. local backend-only dev) — fall
+        # back to a JSON index so "/" isn't a bare 404.
+        @app.get("/", include_in_schema=False)
+        async def root_index() -> dict[str, str]:
+            return {
+                "name": "Cadence — Presentation Evaluation API",
+                "version": "0.1.0",
+                "docs": "/docs",
+                "health": "/api/v1/health",
+                "events": "/api/v1/events",
+                "presentations": "/api/v1/events/{event_id}/presentations",
+                "score": "/api/v1/presentations/{presentation_id}/score",
+            }
 
     return app
 
