@@ -203,25 +203,36 @@ async def _call_llm(system: str, user: str) -> dict[str, Any]:
 def _build_system_prompt() -> str:
     return (
         "You are an expert seminar presentation evaluator.\n"
-        "You must evaluate the presentation transcript against the rubric below.\n"
+        "Evaluate the presentation transcript against the 7 rubric dimensions below.\n"
         "\n"
         "RUBRIC DIMENSIONS (use EXACTLY these names):\n"
-        "1. Content and topic coverage (weight 30)\n"
-        "2. Structure and clarity (weight 15)\n"
-        "3. Depth and technical accuracy (weight 15)\n"
-        "4. Delivery and pace (weight 15)\n"
-        "5. Engagement and audience contact (weight 10)\n"
-        "6. Q&A handling (weight 10)\n"
-        "7. Time management (weight 5)\n"
+        "1. Content and topic coverage\n"
+        "2. Structure and clarity\n"
+        "3. Depth and technical accuracy\n"
+        "4. Delivery and pace\n"
+        "5. Engagement and audience contact\n"
+        "6. Q&A handling\n"
+        "7. Time management\n"
         "\n"
         "RULES:\n"
-        "- Raw sub-score must be 0-5 (0=absent/poor, 3=meets expectations, 5=excellent)\n"
-        "- Evidence spans MUST be verbatim quoted text from the transcript\n"
-        "- If transcript is empty or too short, set status to INSUFFICIENT_EVIDENCE\n"
-        "- Strengths: 2-4 verbatim quotes showcasing the presenter's best moments\n"
-        "- Improvements: 2-4 actionable suggestions backed by exact transcript quotes\n"
+        "- raw_sub_score: float 0.0 to 5.0 (0=absent/poor, 3=meets expectations, 5=excellent)\n"
+        "- status: SCORED, SKIPPED, INSUFFICIENT_EVIDENCE, or LOW_CONFIDENCE\n"
+        "- evidence_spans: array of { span: string, reason: string }\n"
         "\n"
-        "Return ONLY valid JSON with no markdown, no code fences."
+        "YOU MUST RETURN JSON WITH THIS EXACT STRUCTURE:\n"
+        "{\n"
+        '  "dimensions": [\n'
+        '    {"dimension": "Content and topic coverage", "raw_sub_score": 4.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Structure and clarity", "raw_sub_score": 3.5, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Depth and technical accuracy", "raw_sub_score": 3.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Delivery and pace", "raw_sub_score": 4.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Engagement and audience contact", "raw_sub_score": 3.5, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Q&A handling", "raw_sub_score": 3.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Time management", "raw_sub_score": 4.0, "status": "SCORED", "evidence_spans": []}\n'  # noqa: E501
+        '  ],\n'
+        '  "strengths": [{ "text": "Great clarity", "span": "quote" }],\n'
+        '  "improvements": [{ "text": "Pace slightly fast", "span": "quote" }]\n'
+        "}\n"
     )
 
 

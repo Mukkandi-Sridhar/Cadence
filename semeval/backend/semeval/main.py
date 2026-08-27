@@ -9,6 +9,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from semeval.api.routers import evaluate, health, sessions, stream
 from semeval.config import get_settings
 
 logger = structlog.get_logger(__name__)
@@ -64,7 +65,6 @@ def create_app() -> FastAPI:
         }
 
     # ── API Routers ────────────────────────────────────────────────────────────
-    from semeval.api.routers import evaluate, health, sessions, stream
     app.include_router(health.router, prefix="/api/v1")
     app.include_router(sessions.router, prefix="/api/v1")
     app.include_router(evaluate.router, prefix="/api/v1")
