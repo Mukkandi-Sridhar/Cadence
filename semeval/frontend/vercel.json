@@ -1,0 +1,15 @@
+{
+  "framework": "vite",
+  "buildCommand": "cd ../packages/shared-types && npm install && npm run build && cd ../../frontend && npm run build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://semeval-backend.onrender.com/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
