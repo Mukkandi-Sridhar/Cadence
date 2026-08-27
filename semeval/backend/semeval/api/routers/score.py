@@ -233,7 +233,7 @@ def _save_score(score: dict[str, Any]) -> None:
     _scores_cache[score["presentation_id"]] = score
     try:
         sb = get_supabase()
-        sb.table("presentation_scores").upsert(score).execute()
+        sb.table("cadence_presentation_scores").upsert(score).execute()
     except Exception as err:
         logger.debug("supabase_score_upsert_fallback", error=str(err))
 
@@ -242,7 +242,7 @@ def _fetch_score(presentation_id: str) -> dict[str, Any] | None:
     try:
         sb = get_supabase()
         res = (
-            sb.table("presentation_scores")
+            sb.table("cadence_presentation_scores")
             .select("*")
             .eq("presentation_id", presentation_id)
             .execute()

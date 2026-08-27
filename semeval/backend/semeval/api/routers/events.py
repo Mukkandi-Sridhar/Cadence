@@ -49,7 +49,7 @@ def _save_event(event: dict[str, Any]) -> None:
     _events_cache[event["id"]] = event
     try:
         sb = get_supabase()
-        sb.table("events").upsert(event).execute()
+        sb.table("cadence_events").upsert(event).execute()
     except Exception as err:
         logger.debug("supabase_event_upsert_fallback", error=str(err))
 
@@ -62,7 +62,7 @@ async def list_events() -> list[EventResponse]:
     """Return all events, sorted by newest first."""
     try:
         sb = get_supabase()
-        res = sb.table("events").select("*").order("created_at", desc=True).execute()
+        res = sb.table("cadence_events").select("*").order("created_at", desc=True).execute()
         if res.data:
             return [EventResponse(**dict(e)) for e in res.data if isinstance(e, dict)]
     except Exception as err:
@@ -93,7 +93,7 @@ async def get_event(event_id: str) -> EventResponse:
     """Get a single event by ID."""
     try:
         sb = get_supabase()
-        res = sb.table("events").select("*").eq("id", event_id).execute()
+        res = sb.table("cadence_events").select("*").eq("id", event_id).execute()
         if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
             return EventResponse(**dict(res.data[0]))
     except Exception as err:

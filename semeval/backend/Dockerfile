@@ -1,19 +1,11 @@
 FROM python:3.12-slim
 
-# build-essential: some pinned deps (numpy/scipy) may need to compile on
-# platforms without a prebuilt wheel.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
-# Install Python deps first (layer cache)
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e .
-
-# Copy source
+# hatchling's editable install needs the actual package source present,
+# not just pyproject.toml, so copy everything before installing.
 COPY . .
+RUN pip install --no-cache-dir -e .
 
 # Non-root user for security
 RUN useradd -m -u 1001 semeval && chown -R semeval:semeval /app

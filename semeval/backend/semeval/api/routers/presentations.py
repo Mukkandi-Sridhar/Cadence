@@ -90,7 +90,7 @@ def _save_presentation(pres: dict[str, Any]) -> None:
     _presentations_cache[pres["id"]] = pres
     try:
         sb = get_supabase()
-        sb.table("presentations").upsert(pres).execute()
+        sb.table("cadence_presentations").upsert(pres).execute()
     except Exception as err:
         logger.debug("supabase_presentation_upsert_fallback", error=str(err))
 
@@ -98,7 +98,7 @@ def _save_presentation(pres: dict[str, Any]) -> None:
 def _fetch_presentation(presentation_id: str) -> dict[str, Any] | None:
     try:
         sb = get_supabase()
-        res = sb.table("presentations").select("*").eq("id", presentation_id).execute()
+        res = sb.table("cadence_presentations").select("*").eq("id", presentation_id).execute()
         if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
             return dict(res.data[0])
     except Exception as err:
@@ -115,7 +115,7 @@ async def list_presentations(event_id: str) -> list[PresentationResponse]:
     try:
         sb = get_supabase()
         res = (
-            sb.table("presentations")
+            sb.table("cadence_presentations")
             .select("*")
             .eq("event_id", event_id)
             .order("created_at", desc=True)
