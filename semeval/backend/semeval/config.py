@@ -66,6 +66,28 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
     llm_seed: int = Field(default=42)
 
+    @field_validator("openai_api_key")
+    @classmethod
+    def _clean_openai_api_key(cls, v: str) -> str:
+        """
+        Strip incidental whitespace and fail fast on non-ASCII characters.
+        HTTP headers (the Authorization header this key goes into) must be
+        ASCII — a stray character from copy-pasting the key (smart quotes,
+        zero-width spaces, etc.) otherwise breaks every OpenAI call with a
+        cryptic UnicodeEncodeError deep inside httpx instead of a clear
+        error here at startup.
+        """
+        cleaned = v.strip()
+        try:
+            cleaned.encode("ascii")
+        except UnicodeEncodeError as e:
+            msg = (
+                "OPENAI_API_KEY contains a non-ASCII character (likely from "
+                "copy-pasting) — re-paste it via a plain text editor first."
+            )
+            raise ValueError(msg) from e
+        return cleaned
+
     # ── ASR ───────────────────────────────────────────────────────────────────
     asr_adapter: Literal["faster_whisper", "deepgram", "assemblyai"] = Field(
         default="faster_whisper"
@@ -125,6 +147,7 @@ class Settings(BaseSettings):
         """Warn if temperature > 0 (reduces reproducibility per R3)."""
         if v > 0:
             import warnings
+
             warnings.warn(
                 f"LLM_TEMPERATURE={v} > 0 reduces evaluation reproducibility (R3). "
                 "Set to 0 for production.",
