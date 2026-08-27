@@ -33,6 +33,11 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://semeval:semeval_dev_secret@localhost:5432/semeval"
     )
 
+    # ── Supabase ──────────────────────────────────────────────────────────────
+    supabase_url: str = Field(default="")
+    supabase_anon_key: str = Field(default="")
+    supabase_service_role_key: str = Field(default="")
+
     # ── Redis ─────────────────────────────────────────────────────────────────
     redis_url: str = Field(default="redis://localhost:6379/0")
 

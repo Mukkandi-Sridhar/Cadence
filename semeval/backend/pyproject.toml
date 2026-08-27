@@ -19,6 +19,7 @@ dependencies = [
     "asyncpg>=0.29.0",
     "alembic>=1.13.1",
     "pgvector>=0.3.0",
+    "supabase>=2.30.0",
 
     # Config
     "pydantic>=2.7.0",

@@ -1,11 +1,11 @@
 """
-Sessions router — CRUD + event history.
+Sessions router — CRUD + event history backed by Supabase & Postgres.
 
 Provides:
   GET  /api/v1/sessions          — list all sessions (newest first)
   POST /api/v1/sessions          — create a new session
   GET  /api/v1/sessions/{id}     — get session detail
-  POST /api/v1/sessions/{id}/events — append a session event (transcript chunk, stage update, etc.)
+  POST /api/v1/sessions/{id}/events — append a session event
   GET  /api/v1/sessions/{id}/events — list session events
 """
 
@@ -19,13 +19,15 @@ import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from semeval.db.supabase_client import get_supabase
+
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["sessions"])
 
-# ── In-memory store (Phase 0 — replace with DB in Phase 1) ───────────────────
-_sessions: dict[str, dict[str, Any]] = {}
-_session_events: dict[str, list[dict[str, Any]]] = {}
+# ── In-memory fallback cache ──────────────────────────────────────────────────
+_sessions_cache: dict[str, dict[str, Any]] = {}
+_events_cache: dict[str, list[dict[str, Any]]] = {}
 
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
@@ -41,7 +43,7 @@ class SessionCreate(BaseModel):
 class SessionEventCreate(BaseModel):
     event_type: str = Field(
         ...,
-        description="e.g. TRANSCRIPT_CHUNK, AUDIO_HEALTH, STAGE_UPDATE, EVALUATION_COMPLETE",
+        description="e.g. RECORDING_STARTED, TRANSCRIPT_CHUNK, AUDIO_HEALTH, EVALUATION_COMPLETE",
     )
     payload: dict[str, Any] = Field(default_factory=dict)
 
@@ -65,13 +67,47 @@ class SessionEventResponse(BaseModel):
     created_at: str
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _save_session(session: dict[str, Any]) -> None:
+    """Save session to in-memory cache and attempt Supabase sync."""
+    _sessions_cache[session["id"]] = session
+    try:
+        sb = get_supabase()
+        sb.table("session_records").upsert(session).execute()
+    except Exception as err:
+        logger.debug("supabase_session_upsert_fallback", error=str(err))
+
+
+def _save_event(event: dict[str, Any]) -> None:
+    """Save event to in-memory cache and attempt Supabase sync."""
+    sid = event["session_id"]
+    if sid not in _events_cache:
+        _events_cache[sid] = []
+    _events_cache[sid].append(event)
+    try:
+        sb = get_supabase()
+        sb.table("session_event_logs").upsert(event).execute()
+    except Exception as err:
+        logger.debug("supabase_event_upsert_fallback", error=str(err))
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 
 @router.get("/sessions", response_model=list[SessionResponse])
 async def list_sessions() -> list[SessionResponse]:
     """Return all sessions sorted by newest first."""
-    sessions = sorted(_sessions.values(), key=lambda s: s["created_at"], reverse=True)
+    try:
+        sb = get_supabase()
+        res = sb.table("session_records").select("*").order("created_at", desc=True).execute()
+        if res.data:
+            return [SessionResponse(**dict(s)) for s in res.data if isinstance(s, dict)]
+    except Exception as err:
+        logger.debug("supabase_list_sessions_fallback", error=str(err))
+
+    sessions = sorted(_sessions_cache.values(), key=lambda s: s["created_at"], reverse=True)
     return [SessionResponse(**s) for s in sessions]
 
 
@@ -90,8 +126,7 @@ async def create_session(body: SessionCreate) -> SessionResponse:
         "created_at": now,
         "updated_at": now,
     }
-    _sessions[session_id] = session
-    _session_events[session_id] = []
+    _save_session(session)
     logger.info("session_created", session_id=session_id, topic=body.topic)
     return SessionResponse(**session)
 
@@ -99,7 +134,15 @@ async def create_session(body: SessionCreate) -> SessionResponse:
 @router.get("/sessions/{session_id}", response_model=SessionResponse)
 async def get_session(session_id: str) -> SessionResponse:
     """Get a single session by ID."""
-    session = _sessions.get(session_id)
+    try:
+        sb = get_supabase()
+        res = sb.table("session_records").select("*").eq("id", session_id).execute()
+        if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
+            return SessionResponse(**dict(res.data[0]))
+    except Exception as err:
+        logger.debug("supabase_get_session_fallback", error=str(err))
+
+    session = _sessions_cache.get(session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
     return SessionResponse(**session)
@@ -108,8 +151,7 @@ async def get_session(session_id: str) -> SessionResponse:
 @router.post("/sessions/{session_id}/events", response_model=SessionEventResponse, status_code=201)
 async def create_session_event(session_id: str, body: SessionEventCreate) -> SessionEventResponse:
     """Append an event to a session's history timeline."""
-    if session_id not in _sessions:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
+    session = await get_session(session_id)  # verifies existence
 
     event = {
         "id": f"evt-{uuid.uuid4().hex[:10]}",
@@ -119,6 +161,8 @@ async def create_session_event(session_id: str, body: SessionEventCreate) -> Ses
         "created_at": datetime.now(UTC).isoformat(),
     }
 
+    _save_event(event)
+
     # Auto-update session status on key events
     status_map = {
         "RECORDING_STARTED": "RECORDING",
@@ -127,10 +171,11 @@ async def create_session_event(session_id: str, body: SessionEventCreate) -> Ses
         "EVALUATION_FAILED": "FAILED",
     }
     if body.event_type in status_map:
-        _sessions[session_id]["status"] = status_map[body.event_type]
-        _sessions[session_id]["updated_at"] = event["created_at"]
+        updated = session.model_dump()
+        updated["status"] = status_map[body.event_type]
+        updated["updated_at"] = event["created_at"]
+        _save_session(updated)
 
-    _session_events[session_id].append(event)
     logger.info("session_event_created", session_id=session_id, event_type=body.event_type)
     return SessionEventResponse(**event)
 
@@ -138,6 +183,19 @@ async def create_session_event(session_id: str, body: SessionEventCreate) -> Ses
 @router.get("/sessions/{session_id}/events", response_model=list[SessionEventResponse])
 async def list_session_events(session_id: str) -> list[SessionEventResponse]:
     """Return full chronological event log for a session."""
-    if session_id not in _sessions:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
-    return [SessionEventResponse(**e) for e in _session_events[session_id]]
+    try:
+        sb = get_supabase()
+        res = (
+            sb.table("session_event_logs")
+            .select("*")
+            .eq("session_id", session_id)
+            .order("created_at", desc=False)
+            .execute()
+        )
+        if res.data:
+            return [SessionEventResponse(**dict(e)) for e in res.data if isinstance(e, dict)]
+    except Exception as err:
+        logger.debug("supabase_list_events_fallback", error=str(err))
+
+    events = _events_cache.get(session_id, [])
+    return [SessionEventResponse(**e) for e in events]
