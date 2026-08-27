@@ -393,8 +393,16 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
         return results
 
     import uuid
-    return EvaluateResponse(
-        id=f"eval-{uuid.uuid4().hex[:12]}",
+    from datetime import UTC, datetime
+
+    eval_id = f"eval-{uuid.uuid4().hex[:12]}"
+    strengths_items = _build_evidence_items(llm_output.get("strengths", []), "Strength")
+    improvements_items = _build_evidence_items(
+        llm_output.get("improvements", []), "Improvement"
+    )
+
+    response_data = EvaluateResponse(
+        id=eval_id,
         recording_id=req.recording_id,
         presenter_name=req.presenter_name,
         total_score=scoring.total_score,
@@ -405,9 +413,83 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
         temperature=0,
         seed=42,
         dimension_scores=dimension_scores,
-        strengths=_build_evidence_items(llm_output.get("strengths", []), "Strength"),
-        improvements=_build_evidence_items(llm_output.get("improvements", []), "Improvement"),
+        strengths=strengths_items,
+        improvements=improvements_items,
         transcript_word_count=word_count,
         calculated_wpm=wpm,
         duration_ratio=round(duration_ratio, 2),
     )
+
+    # ── Log & Print Structured LLM Output ────────────────────────────────────
+    logger.info(
+        "llm_structured_evaluation_response",
+        eval_id=eval_id,
+        presenter=req.presenter_name,
+        total_score=scoring.total_score,
+        dimensions_count=len(dimension_scores),
+        strengths_count=len(strengths_items),
+        improvements_count=len(improvements_items),
+    )
+
+    # ── Save Evaluation Record to Supabase DB ────────────────────────────────
+    try:
+        from semeval.db.supabase_client import get_supabase
+
+        sb = get_supabase()
+        db_record: dict[str, Any] = {
+            "id": eval_id,
+            "session_id": req.session_id,
+            "recording_id": req.recording_id,
+            "presenter_name": req.presenter_name,
+            "total_score": scoring.total_score,
+            "audio_quality": "PASS",
+            "model_name": response_data.model_name,
+            "model_version": response_data.model_version,
+            "prompt_hash": response_data.prompt_hash,
+            "temperature": 0,
+            "seed": 42,
+            "dimension_scores": [ds.model_dump() for ds in dimension_scores],
+            "strengths": [s.model_dump() for s in strengths_items],
+            "improvements": [imp.model_dump() for imp in improvements_items],
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        sb.table("evaluation_records").upsert(db_record).execute()
+        logger.info("evaluation_saved_to_supabase", eval_id=eval_id)
+    except Exception as err:
+        logger.warning("supabase_evaluation_save_failed", error=str(err))
+
+    return response_data
+
+
+@router.get("/evaluations/{eval_id}", response_model=EvaluateResponse)
+async def get_evaluation(eval_id: str) -> EvaluateResponse:
+    """Get evaluation detail from Supabase DB."""
+    try:
+        from semeval.db.supabase_client import get_supabase
+
+        sb = get_supabase()
+        res = sb.table("evaluation_records").select("*").eq("id", eval_id).execute()
+        if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
+            row = res.data[0]
+            return EvaluateResponse(
+                id=row["id"],
+                recording_id=row["recording_id"],
+                presenter_name=row["presenter_name"],
+                total_score=row["total_score"],
+                audio_quality=row["audio_quality"],
+                model_name=row["model_name"],
+                model_version=row["model_version"],
+                prompt_hash=row["prompt_hash"],
+                temperature=row["temperature"],
+                seed=row["seed"],
+                dimension_scores=[DimensionScore(**ds) for ds in row["dimension_scores"]],
+                strengths=[StrengthImprovement(**s) for s in row["strengths"]],
+                improvements=[StrengthImprovement(**imp) for imp in row["improvements"]],
+                transcript_word_count=0,
+                calculated_wpm=0.0,
+                duration_ratio=1.0,
+            )
+    except Exception as err:
+        logger.warning("supabase_get_evaluation_failed", error=str(err))
+
+    raise HTTPException(status_code=404, detail=f"Evaluation '{eval_id}' not found")
