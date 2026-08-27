@@ -8,6 +8,7 @@ export interface PresenterItem {
 }
 
 interface SessionState {
+  sessionId: string | null;
   topic: string;
   coveragePoints: string[];
   targetDurationSeconds: number;
@@ -15,6 +16,7 @@ interface SessionState {
   presenterQueue: PresenterItem[];
   activePresenterIndex: number;
 
+  setSessionId: (id: string) => void;
   setTopic: (topic: string) => void;
   addCoveragePoint: (point: string) => void;
   removeCoveragePoint: (index: number) => void;
@@ -24,25 +26,19 @@ interface SessionState {
   removePresenter: (id: string) => void;
   reorderPresenter: (fromIndex: number, toIndex: number) => void;
   setActivePresenterIndex: (index: number) => void;
+  resetSession: () => void;
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
-  topic: "Distributed Systems: Raft Consensus Algorithm",
-  coveragePoints: [
-    "Leader election mechanism and term numbers",
-    "Log replication and safety guarantees",
-    "Handling cluster network partitions",
-    "Cluster membership changes",
-  ],
-  targetDurationSeconds: 900, // 15 minutes default
+  sessionId: null,
+  topic: "",
+  coveragePoints: [],
+  targetDurationSeconds: 600, // 10 minutes default
   selectedMicDeviceId: "default",
-  presenterQueue: [
-    { id: "p1", name: "Ananya Sharma", queueOrder: 1, status: "QUEUED" },
-    { id: "p2", name: "Rahul Verma", queueOrder: 2, status: "QUEUED" },
-    { id: "p3", name: "Priya Nair", queueOrder: 3, status: "QUEUED" },
-  ],
+  presenterQueue: [],
   activePresenterIndex: 0,
 
+  setSessionId: (sessionId) => set({ sessionId }),
   setTopic: (topic) => set({ topic }),
   addCoveragePoint: (point) =>
     set((state) => ({
@@ -59,7 +55,7 @@ export const useSessionStore = create<SessionState>((set) => ({
       presenterQueue: [
         ...state.presenterQueue,
         {
-          id: `p-${Date.now()}`,
+          id: `p-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
           name,
           queueOrder: state.presenterQueue.length + 1,
           status: "QUEUED",
@@ -78,4 +74,14 @@ export const useSessionStore = create<SessionState>((set) => ({
       return { presenterQueue: queue.map((p, idx) => ({ ...p, queueOrder: idx + 1 })) };
     }),
   setActivePresenterIndex: (index) => set({ activePresenterIndex: index }),
+  resetSession: () =>
+    set({
+      sessionId: null,
+      topic: "",
+      coveragePoints: [],
+      targetDurationSeconds: 600,
+      selectedMicDeviceId: "default",
+      presenterQueue: [],
+      activePresenterIndex: 0,
+    }),
 }));

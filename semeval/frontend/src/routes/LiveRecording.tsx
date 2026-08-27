@@ -7,6 +7,7 @@ import { LiveTranscript } from "../components/LiveTranscript";
 import { CoverageChecklist } from "../components/CoverageChecklist";
 import { useSessionStore } from "../store/sessionStore";
 import { useRecordingStore } from "../store/recordingStore";
+import { useEvaluationStore } from "../store/evaluationStore";
 import { useAudioCapture } from "../hooks/useAudioCapture";
 import { useEventSource } from "../hooks/useEventSource";
 import { requestScreenWakeLock, releaseScreenWakeLock } from "../lib/wakeLock";
@@ -17,6 +18,7 @@ export default function LiveRecording() {
   const {
     isRecording,
     isPaused,
+    recordingId,
     elapsedSeconds,
     audioHealth,
     liveTranscript,
@@ -25,15 +27,15 @@ export default function LiveRecording() {
     stopRecording,
     tickElapsed,
     togglePointCovered,
-    addTranscriptItem,
   } = useRecordingStore();
+  const { setStage } = useEvaluationStore();
 
   const { startCapture, stopCapture } = useAudioCapture();
   const [showStopModal, setShowStopModal] = useState(false);
 
-  const activePresenter = presenterQueue[activePresenterIndex] || { name: "Ananya Sharma" };
+  const activePresenter = presenterQueue[activePresenterIndex] || { name: "Presenter" };
 
-  useEventSource(isRecording ? "rec-demo-1" : null);
+  useEventSource(recordingId);
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -48,22 +50,10 @@ export default function LiveRecording() {
   }, [isRecording, isPaused, tickElapsed]);
 
   async function handleStart() {
-    startRecording("rec-demo-1");
-    await startCapture("rec-demo-1");
+    const newRecId = `rec-${Date.now()}`;
+    startRecording(newRecId);
+    await startCapture(newRecId);
     await requestScreenWakeLock();
-
-    // Mock initial transcript item after 2 seconds
-    setTimeout(() => {
-      addTranscriptItem({
-        id: "t-1",
-        speaker: activePresenter.name,
-        speakerRole: "PRESENTER",
-        text: "Good morning everyone. Today I'll be presenting on the Raft Consensus Algorithm in distributed systems.",
-        startMs: 1500,
-        endMs: 5000,
-        confidence: 0.96,
-      });
-    }, 2000);
   }
 
   async function handleConfirmStop() {
@@ -71,7 +61,8 @@ export default function LiveRecording() {
     stopCapture();
     await releaseScreenWakeLock();
     setShowStopModal(false);
-    navigate("/sessions/s1/evaluating");
+    setStage("TRANSCRIBING", 10);
+    navigate("/sessions/active/evaluating");
   }
 
   function formatTime(sec: number) {
@@ -93,7 +84,7 @@ export default function LiveRecording() {
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-white/50">Current Presenter</span>
               <h2 className="text-xl font-bold text-white">{activePresenter.name}</h2>
-              <p className="text-xs text-white/60 truncate max-w-md">{topic}</p>
+              <p className="text-xs text-white/60 truncate max-w-md">{topic || "Presentation Session"}</p>
             </div>
             <AudioHealthChip
               gate={audioHealth.qualityGate}
@@ -134,7 +125,7 @@ export default function LiveRecording() {
                   <span className="text-xs font-bold uppercase tracking-wider text-white/70">
                     Live Scrolling Transcript
                   </span>
-                  <span className="text-[11px] font-mono text-white/50">partially streaming</span>
+                  <span className="text-[11px] font-mono text-white/50">streaming</span>
                 </div>
                 <LiveTranscript items={liveTranscript} />
               </div>
