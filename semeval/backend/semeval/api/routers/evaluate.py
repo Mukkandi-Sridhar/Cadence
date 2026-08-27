@@ -313,6 +313,7 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
 
     llm_dims: list[dict[str, Any]] = llm_output.get("dimensions", [])
     is_short_transcript = word_count < 40 or req.elapsed_seconds < 25
+    is_very_short = word_count < 25 or req.elapsed_seconds < 15
 
     for dim_name in ordered_dimensions:
         weight = _DIMENSION_WEIGHTS[dim_name]
@@ -328,13 +329,17 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
             raw = float(llm_dim.get("raw_sub_score", 3.0))
             raw = max(0.0, min(5.0, raw))
             # Strict Deterministic Cap for short/incomplete 1-line presentations
-            if is_short_transcript and dim_name != "Time management":
-                raw = min(raw, 1.5)
+            if is_very_short:
+                raw = min(raw, 0.5)
+            elif is_short_transcript and dim_name != "Time management":
+                raw = min(raw, 1.0)
         else:
             status = DimensionStatus.INSUFFICIENT_EVIDENCE
-            raw = 1.0 if is_short_transcript else 0.0
+            raw = 0.5 if is_very_short else (1.0 if is_short_transcript else 0.0)
 
-        if is_short_transcript and dim_name == "Time management":
+        if is_very_short and dim_name == "Time management":
+            raw = 0.5
+        elif is_short_transcript and dim_name == "Time management":
             raw = min(raw, 1.0)
 
         dimension_inputs.append(

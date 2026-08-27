@@ -229,15 +229,16 @@ export default function LiveRecording() {
       console.warn("Evaluation API fallback:", apiErr);
       const wordCount = liveTranscript.map((t) => t.text).join(" ").split(/\s+/).filter(Boolean).length;
       const wpm = Math.round(wordCount / Math.max(0.1, elapsedSeconds / 60));
+      const isShort = wordCount < 40 || elapsedSeconds < 25;
 
       const dims = [
-        { d: "Content and topic coverage", w: 30, s: 4 },
-        { d: "Structure and clarity", w: 15, s: 4 },
-        { d: "Depth and technical accuracy", w: 15, s: 3 },
-        { d: "Delivery and pace", w: 15, s: wpm >= 110 && wpm <= 170 ? 4 : 3 },
-        { d: "Engagement and audience contact", w: 10, s: 3 },
-        { d: "Q&A handling", w: 10, s: 4 },
-        { d: "Time management", w: 5, s: 4 },
+        { d: "Content and topic coverage", w: 30, s: isShort ? 1 : 3 },
+        { d: "Structure and clarity", w: 15, s: isShort ? 1 : 3 },
+        { d: "Depth and technical accuracy", w: 15, s: isShort ? 1 : 2 },
+        { d: "Delivery and pace", w: 15, s: isShort ? 1 : (wpm >= 110 && wpm <= 170 ? 4 : 3) },
+        { d: "Engagement and audience contact", w: 10, s: isShort ? 1 : 2 },
+        { d: "Q&A handling", w: 10, s: isShort ? 1 : 2 },
+        { d: "Time management", w: 5, s: isShort ? 1 : 3 },
       ];
 
       const totalScore = Math.round(dims.reduce((acc, { w, s }) => acc + (s / 5) * w, 0));
@@ -269,15 +270,14 @@ export default function LiveRecording() {
             verified: true,
           })),
         })),
-        strengths: liveTranscript.slice(0, 3).map((t) => ({
-          text: `Clear delivery of key content at ${Math.floor(t.startMs / 1000)}s.`,
-          startMs: t.startMs,
-          endMs: t.endMs,
-          span: t.text || topic || "Presentation content",
-        })).concat(liveTranscript.length === 0 ? [{ text: `Addressed the topic: ${topic}`, startMs: 0, endMs: 5000, span: topic || "Presentation" }] : []),
+        strengths: isShort
+          ? [{ text: "Speech capture initiated cleanly.", startMs: 0, endMs: 5000, span: liveTranscript[0]?.text || topic || "Intro" }]
+          : liveTranscript.slice(0, 2).map((t) => ({ text: `Clear delivery at ${Math.floor(t.startMs / 1000)}s`, startMs: t.startMs, endMs: t.endMs, span: t.text })),
         improvements: [
           {
-            text: wpm > 0 ? `Measured WPM: ${wpm}. Target optimal range: 130–155 WPM.` : "Maintain a steady speaking pace between 130–155 WPM.",
+            text: isShort
+              ? `Presentation was incomplete (only ${wordCount} words in ${elapsedSeconds}s). Full 5-10 minute presentation required.`
+              : `Measured WPM: ${wpm}. Target optimal range: 130–155 WPM.`,
             startMs: liveTranscript[0]?.startMs || 0,
             endMs: liveTranscript[0]?.endMs || 5000,
             span: liveTranscript[0]?.text || topic || "Introduction",
