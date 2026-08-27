@@ -50,7 +50,16 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Routers (stub for Phase 0 — full routers added in Phase 1+) ───────────
+    # ── Root Route & API Routers ──────────────────────────────────────────────
+    @app.get("/", include_in_schema=False)
+    async def root_index() -> dict[str, str]:
+        return {
+            "name": "Semeval — Seminar Evaluation API",
+            "version": "0.1.0",
+            "docs": "/docs",
+            "health": "/api/v1/health",
+        }
+
     from semeval.api.routers import health
     app.include_router(health.router, prefix="/api/v1")
 
