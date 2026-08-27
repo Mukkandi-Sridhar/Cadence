@@ -9,7 +9,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from semeval.api.routers import evaluate, health, sessions, stream
+from semeval.api.routers import events, health, presentations, score
 from semeval.config import get_settings
 
 logger = structlog.get_logger(__name__)
@@ -31,11 +31,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Semeval — Seminar Evaluation Platform",
+        title="Cadence — Presentation Evaluation API",
         version="0.1.0",
         description=(
-            "Multi-agent AI-powered presentation evaluation. "
-            "Audio → Transcript → Agents → Deterministic Score."
+            "Events → Presentations → live transcript → strict AI scoring, "
+            "with a human-rated physical delivery dimension in the loop."
         ),
         lifespan=lifespan,
         docs_url="/docs",
@@ -56,13 +56,13 @@ def create_app() -> FastAPI:
     @app.get("/", include_in_schema=False)
     async def root_index() -> dict[str, str]:
         return {
-            "name": "Cadence — Seminar Evaluation API",
+            "name": "Cadence — Presentation Evaluation API",
             "version": "0.1.0",
             "docs": "/docs",
             "health": "/api/v1/health",
-            "evaluate": "/api/v1/evaluate",
-            "sessions": "/api/v1/sessions",
-            "stream": "/api/v1/stream/{recording_id}",
+            "events": "/api/v1/events",
+            "presentations": "/api/v1/events/{event_id}/presentations",
+            "score": "/api/v1/presentations/{presentation_id}/score",
         }
 
     @app.get("/health", include_in_schema=False)
@@ -72,9 +72,9 @@ def create_app() -> FastAPI:
 
     # ── API Routers ────────────────────────────────────────────────────────────
     app.include_router(health.router, prefix="/api/v1")
-    app.include_router(sessions.router, prefix="/api/v1")
-    app.include_router(evaluate.router, prefix="/api/v1")
-    app.include_router(stream.router, prefix="/api/v1")
+    app.include_router(events.router, prefix="/api/v1")
+    app.include_router(presentations.router, prefix="/api/v1")
+    app.include_router(score.router, prefix="/api/v1")
 
     # ── Static Frontend SPA Serving (if dist directory exists) ─────────────────
     import os
@@ -85,9 +85,7 @@ def create_app() -> FastAPI:
     dist_dir = os.environ.get("FRONTEND_DIST_DIR", "/app/frontend_dist")
     if not os.path.exists(dist_dir):
         # Fallback to local monorepo path
-        local_dist = os.path.join(
-            os.path.dirname(__file__), "..", "..", "frontend", "dist"
-        )
+        local_dist = os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
         if os.path.exists(local_dist):
             dist_dir = local_dist
 
@@ -103,6 +101,7 @@ def create_app() -> FastAPI:
             # Do not intercept API, docs, or OpenAPI routes
             if full_path.startswith("api/") or full_path in ("docs", "redoc", "openapi.json"):
                 from fastapi import HTTPException
+
                 raise HTTPException(status_code=404, detail="Not Found")
             target_path = os.path.join(dist_dir, full_path)
             if full_path and os.path.exists(target_path) and os.path.isfile(target_path):

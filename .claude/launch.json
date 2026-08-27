@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cadence-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "semeval/frontend", "run", "dev", "--", "--host"],
+      "port": 5173
+    }
+  ]
+}

@@ -13,9 +13,6 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
-    "@semeval/shared-types": "file:../packages/shared-types",
-    "@supabase/supabase-js": "^2.112.4",
-    "idb": "^8.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.24.0",

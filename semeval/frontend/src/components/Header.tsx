@@ -5,12 +5,7 @@ export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
 
-  const navLinks = [
-    { label: "New Session", path: "/sessions/new" },
-    { label: "Live Record", path: "/sessions/s1/record" },
-    { label: "Results", path: "/sessions/s1/results/p1" },
-    { label: "Dashboard", path: "/sessions/s1/dashboard" },
-  ];
+  const navLinks = [{ label: "Home", path: "/" }];
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-surface-950/80 backdrop-blur-lg">
@@ -18,12 +13,12 @@ export function Header() {
         {/* Brand */}
         <Link to="/" className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 font-mono font-bold text-white shadow-lg shadow-brand-600/30">
-            S
+            C
           </div>
           <div>
-            <span className="text-lg font-bold tracking-tight text-white">Semeval</span>
+            <span className="text-lg font-bold tracking-tight text-white">Cadence</span>
             <span className="ml-2 hidden rounded-full bg-brand-500/20 px-2 py-0.5 text-xs font-semibold text-brand-300 sm:inline-block">
-              Multi-Agent AI
+              AI Evaluation
             </span>
           </div>
         </Link>
