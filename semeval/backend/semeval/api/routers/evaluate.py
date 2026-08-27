@@ -215,33 +215,33 @@ def _build_system_prompt() -> str:
         "7. Time management\n"
         "\n"
         "STRICT GRADING SCALE (0.0 to 5.0):\n"
-        "- 0.0 - 1.5: POOR — Superficial, missing key points, or off-topic.\n"
+        "- 0.0 - 1.5: POOR / INCOMPLETE — Short speech (<40 words), missing depth, or 1-line talk.\n"  # noqa: E501
         "- 2.0 - 2.5: BELOW AVERAGE — Basic mention without depth or disorganized.\n"
-        "- 3.0 - 3.5: SATISFACTORY — Meets basic expectations ONLY.\n"
+        "- 3.0 - 3.5: SATISFACTORY — Meets baseline expectations ONLY.\n"
         "- 4.0 - 4.5: VERY GOOD — Deep technical insights, highly clear.\n"
         "- 5.0: EXCEPTIONAL — Flawless, master-class presentation.\n"
         "\n"
-        "STRICT RULES:\n"
-        "- Be critical: if speech is short or repetitive, penalize heavily (1.0-2.5).\n"
+        "STRICT PENALTY RULES:\n"
+        "- SHORT PRESENTATIONS (<40 words or 1-2 lines spoken): PENALIZE HEAVILY (raw_sub_score 0.5-1.5).\n"  # noqa: E501
+        "- Do NOT give 3.0, 4.0, or 5.0 to short 1-line presentations!\n"
         "- If a dimension has no explicit evidence, set status to INSUFFICIENT_EVIDENCE.\n"
         "- All evidence_spans MUST be verbatim quoted text from the transcript.\n"
         "\n"
         "YOU MUST RETURN JSON WITH THIS EXACT STRUCTURE:\n"
         "{\n"
         '  "dimensions": [\n'
-        '    {"dimension": "Content and topic coverage", "raw_sub_score": 2.5, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
-        '    {"dimension": "Structure and clarity", "raw_sub_score": 3.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
-        '    {"dimension": "Depth and technical accuracy", "raw_sub_score": 2.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
-        '    {"dimension": "Delivery and pace", "raw_sub_score": 3.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
-        '    {"dimension": "Engagement and audience contact", "raw_sub_score": 2.5, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
-        '    {"dimension": "Q&A handling", "raw_sub_score": 2.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
-        '    {"dimension": "Time management", "raw_sub_score": 3.0, "status": "SCORED", "evidence_spans": []}\n'  # noqa: E501
+        '    {"dimension": "Content and topic coverage", "raw_sub_score": 1.5, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Structure and clarity", "raw_sub_score": 1.5, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Depth and technical accuracy", "raw_sub_score": 1.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Delivery and pace", "raw_sub_score": 1.5, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Engagement and audience contact", "raw_sub_score": 1.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Q&A handling", "raw_sub_score": 1.0, "status": "SCORED", "evidence_spans": []},\n'  # noqa: E501
+        '    {"dimension": "Time management", "raw_sub_score": 1.0, "status": "SCORED", "evidence_spans": []}\n'  # noqa: E501
         '  ],\n'
-        '  "strengths": [{ "text": "Clear opening state", "span": "quote" }],\n'
-        '  "improvements": [{ "text": "Needs deeper technical evidence", "span": "quote" }]\n'
+        '  "strengths": [{ "text": "Clear opening phrase", "span": "quote" }],\n'
+        '  "improvements": [{ "text": "Presentation was incomplete (only 1 line spoken). Need full 5-10 minute presentation.", "span": "quote" }]\n'  # noqa: E501
         "}\n"
     )
-
 
 
 def _build_user_prompt(
@@ -258,7 +258,7 @@ def _build_user_prompt(
     )
     no_transcript_msg = "[No transcript captured — score based on available session metadata]"
     transcript_section = transcript_full if transcript_full else no_transcript_msg
-    summary_line = "Evaluate this presentation and return your assessment as JSON with keys: dimensions, strengths, improvements."  # noqa: E501
+    summary_line = "Evaluate this presentation strictly against the rubric and rules. Return assessment as JSON."  # noqa: E501
     return f"""TOPIC: {req.topic}
 
 REQUIRED COVERAGE POINTS:
@@ -312,6 +312,7 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
     ordered_dimensions = list(_DIMENSION_WEIGHTS.keys())
 
     llm_dims: list[dict[str, Any]] = llm_output.get("dimensions", [])
+    is_short_transcript = word_count < 40 or req.elapsed_seconds < 25
 
     for dim_name in ordered_dimensions:
         weight = _DIMENSION_WEIGHTS[dim_name]
@@ -326,9 +327,15 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
 
             raw = float(llm_dim.get("raw_sub_score", 3.0))
             raw = max(0.0, min(5.0, raw))
+            # Strict Deterministic Cap for short/incomplete 1-line presentations
+            if is_short_transcript and dim_name != "Time management":
+                raw = min(raw, 1.5)
         else:
             status = DimensionStatus.INSUFFICIENT_EVIDENCE
-            raw = 0.0
+            raw = 1.0 if is_short_transcript else 0.0
+
+        if is_short_transcript and dim_name == "Time management":
+            raw = min(raw, 1.0)
 
         dimension_inputs.append(
             DimensionInput(
@@ -352,18 +359,28 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
         # Match evidence spans back to transcript segments for timestamps
         evidence_list: list[EvidenceSpan] = []
         for j, ev in enumerate(raw_evidence):
-            span_text = ev.get("span", "")
+            if isinstance(ev, dict):
+                span_text = str(ev.get("span", ""))
+                reason_text = str(ev.get("reason", "Verbatim evidence from speech"))
+            else:
+                span_text = str(ev)
+                reason_text = "Verbatim evidence from speech"
+
             matched_seg = next(
-                (s for s in req.transcript_segments if span_text.lower() in s.text.lower()),
+                (
+                    s
+                    for s in req.transcript_segments
+                    if span_text and span_text.lower() in s.text.lower()
+                ),
                 None,
             )
             evidence_list.append(
                 EvidenceSpan(
                     id=f"ev-{i}-{j}",
-                    transcript_span=span_text,
+                    transcript_span=span_text or transcript_full[:100],
                     start_ms=matched_seg.start_ms if matched_seg else 0,
                     end_ms=matched_seg.end_ms if matched_seg else 2000,
-                    reason=ev.get("reason", ""),
+                    reason=reason_text,
                 )
             )
 
@@ -380,18 +397,28 @@ async def evaluate_presentation(req: EvaluateRequest) -> EvaluateResponse:
 
     # Build strengths and improvements with timestamps
     def _build_evidence_items(
-        items: list[dict[str, Any]], label: str
+        items: list[Any], label: str
     ) -> list[StrengthImprovement]:
         results = []
         for k, item in enumerate(items):
-            span_text = item.get("span", "")
+            if isinstance(item, dict):
+                span_text = str(item.get("span", ""))
+                text_content = str(item.get("text", f"{label} observation {k+1}"))
+            else:
+                span_text = str(item)
+                text_content = str(item)
+
             matched_seg = next(
-                (s for s in req.transcript_segments if span_text.lower() in s.text.lower()),
+                (
+                    s
+                    for s in req.transcript_segments
+                    if span_text and span_text.lower() in s.text.lower()
+                ),
                 None,
             )
             results.append(
                 StrengthImprovement(
-                    text=item.get("text", f"{label} observation {k+1}"),
+                    text=text_content,
                     start_ms=matched_seg.start_ms if matched_seg else k * 5000,
                     end_ms=matched_seg.end_ms if matched_seg else (k + 1) * 5000,
                     span=span_text or transcript_full[:120],
