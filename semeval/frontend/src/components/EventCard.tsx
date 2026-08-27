@@ -19,9 +19,9 @@ export function EventCard({ id, name, eventDate }: EventCardProps) {
       to={`/events/${id}`}
       className="glass-card p-6 flex flex-col gap-2 border border-transparent hover:border-brand-500/40 transition-all"
     >
-      <span className="text-xs font-mono text-white/50">{formatted}</span>
-      <h3 className="text-lg font-bold text-white">{name}</h3>
-      <span className="text-xs font-semibold text-brand-400">View Presentations →</span>
+      <span className="text-xs font-mono text-ink/50">{formatted}</span>
+      <h3 className="text-lg font-bold text-ink">{name}</h3>
+      <span className="text-xs font-semibold text-brand-700">View Presentations →</span>
     </Link>
   );
 }

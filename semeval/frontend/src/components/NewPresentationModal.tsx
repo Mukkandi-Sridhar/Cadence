@@ -71,8 +71,8 @@ export function NewPresentationModal({ onClose, onCreate }: NewPresentationModal
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm overflow-y-auto py-10">
-      <div className="glass-card max-w-lg w-full p-6 flex flex-col gap-5 border border-white/20 my-auto">
-        <h3 className="text-xl font-bold text-white">New Presentation</h3>
+      <div className="glass-card max-w-lg w-full p-6 flex flex-col gap-5 border border-ink/20 my-auto">
+        <h3 className="text-xl font-bold text-ink">New Presentation</h3>
 
         {error && (
           <div className="rounded-xl border border-danger/40 bg-danger/10 p-3 text-sm font-semibold text-danger">
@@ -82,7 +82,7 @@ export function NewPresentationModal({ onClose, onCreate }: NewPresentationModal
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-brand-300">
+            <label className="text-xs font-bold uppercase tracking-wider text-brand-700">
               Team Name *
             </label>
             <input
@@ -91,12 +91,12 @@ export function NewPresentationModal({ onClose, onCreate }: NewPresentationModal
               value={teamName}
               onChange={(e) => setTeamName(e.target.value)}
               placeholder="e.g. Team Vector"
-              className="w-full rounded-xl border border-white/10 bg-surface-900 px-4 py-3 text-sm text-white placeholder-white/40 focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-xl border border-ink/10 bg-surface-900 px-4 py-3 text-sm text-ink placeholder-ink/40 focus:border-brand-500 focus:outline-none"
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-brand-300">
+            <label className="text-xs font-bold uppercase tracking-wider text-brand-700">
               Team Members *
             </label>
             <div className="flex gap-2">
@@ -106,7 +106,7 @@ export function NewPresentationModal({ onClose, onCreate }: NewPresentationModal
                 onChange={(e) => setMemberInput(e.target.value)}
                 onKeyDown={handleMemberKeyDown}
                 placeholder="Type a name, press Enter to add"
-                className="flex-1 rounded-xl border border-white/10 bg-surface-900 px-4 py-2.5 text-sm text-white placeholder-white/40 focus:border-brand-500 focus:outline-none"
+                className="flex-1 rounded-xl border border-ink/10 bg-surface-900 px-4 py-2.5 text-sm text-ink placeholder-ink/40 focus:border-brand-500 focus:outline-none"
               />
               <button type="button" onClick={addMember} className="btn-primary py-2.5 px-4 text-sm">
                 Add
@@ -117,13 +117,13 @@ export function NewPresentationModal({ onClose, onCreate }: NewPresentationModal
                 {members.map((m) => (
                   <span
                     key={m}
-                    className="inline-flex items-center gap-2 rounded-full bg-brand-600/20 border border-brand-500/30 px-3 py-1 text-xs font-semibold text-brand-300"
+                    className="inline-flex items-center gap-2 rounded-full bg-brand-600/20 border border-brand-500/30 px-3 py-1 text-xs font-semibold text-brand-700"
                   >
                     {m}
                     <button
                       type="button"
                       onClick={() => setMembers((prev) => prev.filter((x) => x !== m))}
-                      className="text-brand-300/70 hover:text-white"
+                      className="text-brand-700/70 hover:text-ink"
                     >
                       ✕
                     </button>
@@ -134,7 +134,7 @@ export function NewPresentationModal({ onClose, onCreate }: NewPresentationModal
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-brand-300">
+            <label className="text-xs font-bold uppercase tracking-wider text-brand-700">
               Presentation Topic *
             </label>
             <input
@@ -142,21 +142,21 @@ export function NewPresentationModal({ onClose, onCreate }: NewPresentationModal
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
               placeholder="e.g. Retrieval Augmented Generation for Support Bots"
-              className="w-full rounded-xl border border-white/10 bg-surface-900 px-4 py-3 text-sm text-white placeholder-white/40 focus:border-brand-500 focus:outline-none"
+              className="w-full rounded-xl border border-ink/10 bg-surface-900 px-4 py-3 text-sm text-ink placeholder-ink/40 focus:border-brand-500 focus:outline-none"
             />
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-brand-300">
+            <label className="text-xs font-bold uppercase tracking-wider text-brand-700">
               Custom Evaluation Instructions{" "}
-              <span className="text-white/40 normal-case font-normal">(optional)</span>
+              <span className="text-ink/40 normal-case font-normal">(optional)</span>
             </label>
             <textarea
               value={customInstructions}
               onChange={(e) => setCustomInstructions(e.target.value)}
               placeholder="e.g. Focus heavily on whether they explain the math behind attention, and penalize skipping the live demo."
               rows={3}
-              className="w-full rounded-xl border border-white/10 bg-surface-900 px-4 py-3 text-sm text-white placeholder-white/40 focus:border-brand-500 focus:outline-none resize-none"
+              className="w-full rounded-xl border border-ink/10 bg-surface-900 px-4 py-3 text-sm text-ink placeholder-ink/40 focus:border-brand-500 focus:outline-none resize-none"
             />
           </div>
 

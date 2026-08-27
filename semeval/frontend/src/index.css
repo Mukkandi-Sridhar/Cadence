@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   * {
@@ -19,36 +19,41 @@
 
   /* Accessible focus ring */
   :focus-visible {
-    @apply outline outline-2 outline-offset-2 outline-brand-400;
+    @apply outline outline-2 outline-offset-2 outline-brand-500;
   }
 
-  /* Scrollbar styling for dark mode */
+  /* Scrollbar styling */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    @apply bg-surface-900;
+    @apply bg-surface-200;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-brand-700 rounded-full;
+    @apply bg-brand-400 rounded-full;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-brand-500;
+    @apply bg-brand-600;
   }
 }
 
 @layer components {
-  /* Glass card used across all 5 screens */
+  /* Elevated card used across every screen — a clean white card on the
+     cream page background, with a soft shadow instead of dark-mode blur.
+     Note: opacity-modifier utilities (e.g. border-ink/10) on custom flat
+     colors aren't reliably resolvable inside @apply, so those use literal
+     rgb()-with-alpha CSS instead throughout this file. */
   .glass-card {
-    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl;
+    @apply bg-surface-900 rounded-2xl shadow-sm;
+    border: 1px solid rgb(26 24 21 / 0.1);
   }
 
   /* Primary action button — large, high contrast */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
            px-6 py-3 rounded-xl font-semibold text-base
-           bg-brand-600 hover:bg-brand-500
+           bg-brand-600 hover:bg-brand-700
            text-white
            transition-all duration-200
            focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-400
@@ -59,7 +64,7 @@
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2
            px-6 py-3 rounded-xl font-semibold text-base
-           bg-danger hover:bg-red-400
+           bg-danger hover:bg-red-800
            text-white
            transition-all duration-200
            focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400
@@ -70,8 +75,12 @@
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2
            px-4 py-2 rounded-lg font-medium text-sm
-           text-white/70 hover:text-white hover:bg-white/10
            transition-all duration-200;
+    color: rgb(26 24 21 / 0.7);
+  }
+  .btn-ghost:hover {
+    color: rgb(26 24 21 / 1);
+    background-color: rgb(26 24 21 / 0.05);
   }
 
   /* Status badge */
@@ -79,9 +88,9 @@
     @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
 
-  .badge-success { @apply badge bg-success/20 text-success; }
-  .badge-warning { @apply badge bg-warning/20 text-warning; }
-  .badge-danger  { @apply badge bg-danger/20 text-danger; }
-  .badge-info    { @apply badge bg-info/20 text-info; }
-  .badge-muted   { @apply badge bg-white/10 text-white/60; }
+  .badge-success { @apply badge; background-color: rgb(22 128 60 / 0.1); color: rgb(22 128 60 / 1); }
+  .badge-warning { @apply badge; background-color: rgb(180 83 9 / 0.1); color: rgb(180 83 9 / 1); }
+  .badge-danger  { @apply badge; background-color: rgb(185 28 28 / 0.1); color: rgb(185 28 28 / 1); }
+  .badge-info    { @apply badge; background-color: rgb(3 105 161 / 0.1); color: rgb(3 105 161 / 1); }
+  .badge-muted   { @apply badge; background-color: rgb(26 24 21 / 0.05); color: rgb(26 24 21 / 0.6); }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "../components/Header";
+import { Footer } from "../components/Footer";
 import { EventCard } from "../components/EventCard";
 import { NewEventModal } from "../components/NewEventModal";
 import { getApiBaseUrl } from "../lib/apiConfig";
@@ -74,18 +75,18 @@ export default function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-950 text-white flex flex-col">
+    <div className="min-h-screen bg-surface-950 text-ink flex flex-col">
       <Header />
 
       <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-card p-6">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-brand-300">
+              <span className="text-xs font-bold uppercase tracking-wider text-brand-700">
                 Presentation Evaluation
               </span>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white">Events</h1>
-              <p className="text-xs text-white/60 mt-0.5">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-ink">Events</h1>
+              <p className="text-xs text-ink/60 mt-0.5">
                 {events.length} event{events.length !== 1 ? "s" : ""}
               </p>
             </div>
@@ -101,12 +102,12 @@ export default function HomePage() {
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-white/40 text-sm animate-pulse">
+            <div className="flex items-center justify-center py-16 text-ink/40 text-sm animate-pulse">
               Loading events…
             </div>
           ) : events.length === 0 ? (
             <div className="glass-card p-12 flex flex-col items-center justify-center text-center gap-4">
-              <p className="text-sm text-white/40 italic">No events yet.</p>
+              <p className="text-sm text-ink/40 italic">No events yet.</p>
               <button onClick={() => setShowModal(true)} className="btn-primary py-3 px-6">
                 Create Your First Event
               </button>
@@ -120,6 +121,8 @@ export default function HomePage() {
           )}
         </div>
       </main>
+
+      <Footer />
 
       {showModal && <NewEventModal onClose={() => setShowModal(false)} onCreate={handleCreate} />}
     </div>

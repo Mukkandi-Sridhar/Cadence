@@ -8,17 +8,19 @@ export function Header() {
   const navLinks = [{ label: "Home", path: "/" }];
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-white/10 bg-surface-950/80 backdrop-blur-lg">
+    <header className="sticky top-0 z-40 w-full border-b border-ink/10 bg-surface-950/90 backdrop-blur-lg">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         {/* Brand */}
         <Link to="/" className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 font-mono font-bold text-white shadow-lg shadow-brand-600/30">
-            C
-          </div>
+          <img
+            src="/rgmcet-logo.jpg"
+            alt="RGMCET crest"
+            className="h-10 w-10 rounded-lg object-contain shadow-sm shadow-ink/10"
+          />
           <div>
-            <span className="text-lg font-bold tracking-tight text-white">Cadence</span>
-            <span className="ml-2 hidden rounded-full bg-brand-500/20 px-2 py-0.5 text-xs font-semibold text-brand-300 sm:inline-block">
-              AI Evaluation
+            <span className="text-lg font-bold tracking-tight text-ink">RGMCET</span>
+            <span className="ml-2 hidden rounded-full bg-brand-500/10 px-2 py-0.5 text-xs font-semibold text-brand-700 sm:inline-block">
+              Presentation Evaluation
             </span>
           </div>
         </Link>
@@ -33,8 +35,8 @@ export function Header() {
                 to={link.path}
                 className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-all duration-150 ${
                   isActive
-                    ? "bg-brand-600/20 text-brand-300 font-semibold border border-brand-500/30"
-                    : "text-white/70 hover:bg-white/5 hover:text-white"
+                    ? "bg-brand-600/10 text-brand-700 font-semibold border border-brand-500/30"
+                    : "text-ink/70 hover:bg-ink/5 hover:text-ink"
                 }`}
               >
                 {link.label}
@@ -45,7 +47,7 @@ export function Header() {
 
         {/* Status Indicator & Role Badge */}
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/80 sm:flex">
+          <div className="hidden items-center gap-2 rounded-full border border-ink/10 bg-ink/5 px-3 py-1 text-xs text-ink/80 sm:flex">
             <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
             <span>Ready</span>
           </div>
@@ -53,7 +55,7 @@ export function Header() {
           {/* Mobile Hamburger Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white md:hidden"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-ink/10 bg-ink/5 text-ink md:hidden"
             aria-label="Toggle navigation menu"
           >
             {mobileMenuOpen ? (
@@ -71,7 +73,7 @@ export function Header() {
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="border-b border-white/10 bg-surface-900 px-4 pb-4 pt-2 md:hidden">
+        <div className="border-b border-ink/10 bg-surface-900 px-4 pb-4 pt-2 md:hidden">
           <nav className="flex flex-col gap-2">
             {navLinks.map((link) => {
               const isActive = location.pathname === link.path;
@@ -81,7 +83,7 @@ export function Header() {
                   to={link.path}
                   onClick={() => setMobileMenuOpen(false)}
                   className={`rounded-lg px-4 py-2.5 text-base font-medium transition-colors ${
-                    isActive ? "bg-brand-600 text-white font-semibold" : "text-white/80 hover:bg-white/5"
+                    isActive ? "bg-brand-600 text-white font-semibold" : "text-ink/80 hover:bg-ink/5"
                   }`}
                 >
                   {link.label}

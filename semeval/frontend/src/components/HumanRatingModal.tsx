@@ -36,10 +36,10 @@ export function HumanRatingModal({ onClose, onSubmit }: HumanRatingModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="glass-card max-w-lg w-full p-6 flex flex-col gap-5 border border-white/20">
+      <div className="glass-card max-w-lg w-full p-6 flex flex-col gap-5 border border-ink/20">
         <div>
-          <h3 className="text-xl font-bold text-white">Rate Physical Delivery</h3>
-          <p className="text-sm text-white/60 mt-1">
+          <h3 className="text-xl font-bold text-ink">Rate Physical Delivery</h3>
+          <p className="text-sm text-ink/60 mt-1">
             The AI only reads the transcript — it can't see the presenter. Rate their body
             language, hand gestures, movement, facial expressions, and overall physical
             confidence as one holistic score.
@@ -52,28 +52,28 @@ export function HumanRatingModal({ onClose, onSubmit }: HumanRatingModalProps) {
           </div>
         )}
 
-        <div className="grid grid-cols-5 gap-2">
+        <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
           {SCALE.map((s) => (
             <button
               key={s.value}
               type="button"
               onClick={() => setScore(s.value)}
               disabled={submitting}
-              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-4 transition-all disabled:opacity-50 ${
+              className={`flex flex-col items-center justify-center gap-1 rounded-xl border p-2.5 sm:p-4 transition-all disabled:opacity-50 ${
                 score === s.value
-                  ? "border-brand-500 bg-brand-600/20 text-white font-bold"
-                  : "border-white/10 bg-white/5 text-white/70 hover:bg-white/10"
+                  ? "border-brand-500 bg-brand-600/20 text-ink font-bold"
+                  : "border-ink/10 bg-ink/5 text-ink/70 hover:bg-ink/10"
               }`}
             >
-              <span className="text-2xl font-mono">{s.value}</span>
-              <span className="text-[10px] uppercase tracking-wide">{s.label}</span>
+              <span className="text-xl sm:text-2xl font-mono">{s.value}</span>
+              <span className="text-[9px] sm:text-[10px] uppercase tracking-wide">{s.label}</span>
             </button>
           ))}
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs font-bold uppercase tracking-wider text-brand-300">
-            Note <span className="text-white/40 normal-case font-normal">(optional)</span>
+          <label className="text-xs font-bold uppercase tracking-wider text-brand-700">
+            Note <span className="text-ink/40 normal-case font-normal">(optional)</span>
           </label>
           <textarea
             value={note}
@@ -81,7 +81,7 @@ export function HumanRatingModal({ onClose, onSubmit }: HumanRatingModalProps) {
             placeholder="e.g. Confident stance, made eye contact, used hand gestures to emphasize key points."
             rows={2}
             disabled={submitting}
-            className="w-full rounded-xl border border-white/10 bg-surface-900 px-4 py-3 text-sm text-white placeholder-white/40 focus:border-brand-500 focus:outline-none resize-none disabled:opacity-50"
+            className="w-full rounded-xl border border-ink/10 bg-surface-900 px-4 py-3 text-sm text-ink placeholder-ink/40 focus:border-brand-500 focus:outline-none resize-none disabled:opacity-50"
           />
         </div>
 

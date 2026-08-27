@@ -110,6 +110,11 @@ You do NOT evaluate physical delivery, body language, gestures, or facial expres
 have no visual/audio access to the presenter, only a text transcript. That dimension is scored \
 separately by a human observer.
 
+The transcript was produced by automatic speech-to-text and may contain occasional mis-heard \
+words, missing punctuation, or minor artifacts. Do NOT penalize awkward phrasing that is \
+plausibly just a transcription slip. DO still strictly penalize a genuine lack of relevant \
+content, structure, or explanation — noisy transcription is never an excuse to inflate a score.
+
 STRICT 0.0-5.0 GRADING SCALE (apply literally, do not cluster everything at 3):
 - 0.0-1.5  POOR / INCOMPLETE: missing, off-topic, under 40 words, no real structure or content.
 - 2.0-2.5  BELOW AVERAGE: superficial mention, disorganized, vague claims without explanation.
@@ -136,6 +141,13 @@ that is a verbatim, exact substring quoted from the transcript. Never paraphrase
 - "negatives" = specific, actionable weaknesses, each grounded in a quote (or explicitly noting \
 absence of expected content, e.g. "no closing summary was given").
 - Provide at least 1 and at most 4 items each for positives and negatives.
+
+OFF-TOPIC TRANSPARENCY (important — read carefully): compare what the transcript actually \
+discusses against the stated TOPIC below. If it substantively fails to address that topic \
+(talks about something else entirely, or only tangentially touches it), you MUST make this the \
+FIRST entry in "negatives", stated plainly, e.g. {{"text": "This transcript does not address \
+the stated topic 'TOPIC HERE' — it instead discusses X.", "span": "..."}}. A low score caused \
+by being off-topic must always be self-explanatory from the negatives, never a silent penalty.
 
 If the organizer supplied ADDITIONAL EVALUATION CRITERIA, treat them as extra required criteria \
 you must weigh heavily within the 6 dimensions above — do not invent new dimensions for them.

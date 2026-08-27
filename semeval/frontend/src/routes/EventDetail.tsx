@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Header } from "../components/Header";
+import { Footer } from "../components/Footer";
 import { PresentationCard } from "../components/PresentationCard";
 import { NewPresentationModal, NewPresentationData } from "../components/NewPresentationModal";
 import { getApiBaseUrl } from "../lib/apiConfig";
@@ -71,23 +72,23 @@ export default function EventDetail() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-950 text-white flex flex-col">
+    <div className="min-h-screen bg-surface-950 text-ink flex flex-col">
       <Header />
 
       <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-8">
-          <Link to="/" className="text-xs font-semibold text-brand-400 hover:text-brand-300 w-fit">
+          <Link to="/" className="text-xs font-semibold text-brand-700 hover:text-brand-900 w-fit">
             ← All Events
           </Link>
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-card p-6">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-brand-300">Event</span>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
+              <span className="text-xs font-bold uppercase tracking-wider text-brand-700">Event</span>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-ink">
                 {event?.name || (loading ? "Loading…" : "Event")}
               </h1>
               {event && (
-                <p className="text-xs text-white/60 mt-0.5">
+                <p className="text-xs text-ink/60 mt-0.5">
                   {new Date(event.event_date).toLocaleDateString(undefined, {
                     year: "numeric",
                     month: "long",
@@ -109,12 +110,12 @@ export default function EventDetail() {
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-white/40 text-sm animate-pulse">
+            <div className="flex items-center justify-center py-16 text-ink/40 text-sm animate-pulse">
               Loading presentations…
             </div>
           ) : presentations.length === 0 ? (
             <div className="glass-card p-12 flex flex-col items-center justify-center text-center gap-4">
-              <p className="text-sm text-white/40 italic">No presentations yet.</p>
+              <p className="text-sm text-ink/40 italic">No presentations yet.</p>
               <button onClick={() => setShowModal(true)} className="btn-primary py-3 px-6">
                 Create the First Presentation
               </button>
@@ -136,6 +137,8 @@ export default function EventDetail() {
           )}
         </div>
       </main>
+
+      <Footer />
 
       {showModal && <NewPresentationModal onClose={() => setShowModal(false)} onCreate={handleCreate} />}
     </div>

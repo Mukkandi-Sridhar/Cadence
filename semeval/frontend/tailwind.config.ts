@@ -12,33 +12,41 @@ export default {
         mono: ['JetBrains Mono', 'Consolas', 'monospace'],
       },
       colors: {
-        // Primary brand — a deep indigo-blue
+        // Primary brand — a deep navy, drawn from the RGMCET crest's gear
         brand: {
-          50:  '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          50:  '#eef2f9',
+          100: '#dce6f2',
+          200: '#b9cce6',
+          300: '#8babd4',
+          400: '#5c86bd',
+          500: '#3a67a3',
+          600: '#254f85',
+          700: '#1c3d68',
+          800: '#16304f',
+          900: '#12253d',
+          950: '#0b1626',
         },
-        // Surface palette for dark mode UI
+        // Accent gold — drawn from the crest's shield gradient
+        gold: {
+          400: '#f0b429',
+          500: '#dc9a1f',
+          600: '#b87e15',
+        },
+        // Surface palette — light, cream-toned UI
         surface: {
-          50:  '#f8fafc',
-          100: '#f1f5f9',
-          200: '#e2e8f0',
-          900: '#0f172a',
-          950: '#020617',
+          50:  '#fffdf8',
+          100: '#fbf7ec',
+          200: '#e8e1cc',
+          900: '#ffffff',
+          950: '#faf5e7',
         },
+        // Warm near-black for text — replaces literal white/black utilities
+        ink: '#1a1815',
         // Semantic colours
-        success: '#22c55e',
-        warning: '#f59e0b',
-        danger:  '#ef4444',
-        info:    '#38bdf8',
+        success: '#16803c',
+        warning: '#b45309',
+        danger:  '#b91c1c',
+        info:    '#0369a1',
       },
       animation: {
         'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',

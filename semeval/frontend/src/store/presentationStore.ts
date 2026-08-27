@@ -22,6 +22,7 @@ interface PresentationDraftState {
   stopRecording: () => void;
   tickElapsed: () => void;
   addTranscriptItem: (item: TranscriptItem) => void;
+  setTranscript: (items: TranscriptItem[]) => void;
   setInterimText: (text: string) => void;
   setHumanScore: (score: number | null) => void;
   setHumanNote: (note: string) => void;
@@ -52,6 +53,7 @@ export const usePresentationStore = create<PresentationDraftState>()(
       tickElapsed: () => set((s) => ({ elapsedSeconds: s.elapsedSeconds + 1 })),
       addTranscriptItem: (item) =>
         set((s) => ({ transcript: [...s.transcript, item], interimText: "" })),
+      setTranscript: (items) => set({ transcript: items, interimText: "" }),
       setInterimText: (text) => set({ interimText: text }),
       setHumanScore: (score) => set({ humanScore: score }),
       setHumanNote: (note) => set({ humanNote: note }),

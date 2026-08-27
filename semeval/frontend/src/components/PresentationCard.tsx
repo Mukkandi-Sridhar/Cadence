@@ -11,7 +11,7 @@ interface PresentationCardProps {
 }
 
 const statusColors: Record<string, string> = {
-  DRAFT: "text-white/60 bg-white/10",
+  DRAFT: "text-ink/60 bg-ink/10",
   RECORDING: "text-warning bg-warning/20",
   RECORDED: "text-info bg-info/20",
   SCORED: "text-success bg-success/20",
@@ -38,23 +38,23 @@ export function PresentationCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-base font-bold text-white truncate">{teamName}</h3>
-          <p className="text-xs text-white/60 mt-0.5 line-clamp-2">{topic}</p>
+          <h3 className="text-base font-bold text-ink truncate">{teamName}</h3>
+          <p className="text-xs text-ink/60 mt-0.5 line-clamp-2">{topic}</p>
         </div>
         {typeof totalScore === "number" && (
-          <span className="shrink-0 rounded-full bg-brand-600/20 border border-brand-500/30 px-2.5 py-1 text-xs font-mono font-bold text-brand-300">
+          <span className="shrink-0 rounded-full bg-brand-600/20 border border-brand-500/30 px-2.5 py-1 text-xs font-mono font-bold text-brand-700">
             {totalScore}/100
           </span>
         )}
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-white/50 truncate">
+        <span className="text-[11px] text-ink/50 truncate">
           {members.slice(0, 3).join(", ")}
           {members.length > 3 ? ` +${members.length - 3}` : ""}
         </span>
         <span
           className={`shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
-            statusColors[status] || "text-white/60 bg-white/10"
+            statusColors[status] || "text-ink/60 bg-ink/10"
           }`}
         >
           {status}

@@ -14,10 +14,10 @@ export function EvidenceSpan({ span, reason, startMs, verified = true }: Evidenc
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-3 text-sm hover:border-brand-500/40 transition-all">
+    <div className="flex flex-col gap-2 rounded-xl border border-ink/10 bg-ink/5 p-3 text-sm hover:border-brand-500/40 transition-all">
       <div className="flex items-center justify-between">
         {typeof startMs === "number" ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md bg-brand-600/20 px-2.5 py-1 font-mono text-xs font-semibold text-brand-300 border border-brand-500/30">
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-brand-600/20 px-2.5 py-1 font-mono text-xs font-semibold text-brand-700 border border-brand-500/30">
             <span>⏱</span>
             <span>{formatTime(startMs)}</span>
           </span>
@@ -31,10 +31,10 @@ export function EvidenceSpan({ span, reason, startMs, verified = true }: Evidenc
         )}
       </div>
 
-      <blockquote className="border-l-2 border-brand-400 pl-3 italic text-white/90">
+      <blockquote className="border-l-2 border-brand-400 pl-3 italic text-ink/90">
         "{span}"
       </blockquote>
-      <p className="text-xs text-white/60">{reason}</p>
+      <p className="text-xs text-ink/60">{reason}</p>
     </div>
   );
 }

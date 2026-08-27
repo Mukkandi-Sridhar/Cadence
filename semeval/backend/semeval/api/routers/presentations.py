@@ -2,14 +2,18 @@
 Presentations router — CRUD backed by Supabase, in-memory fallback.
 
 A presentation belongs to an event: team name, members, topic, and an
-optional custom evaluation instructions block. Its transcript is captured
-client-side (Web Speech API) and persisted here when recording stops.
+optional custom evaluation instructions block. A rough live transcript is
+captured client-side (Web Speech API) for real-time captions; the accurate
+transcript actually used for scoring comes from POST .../transcribe, which
+runs the recorded audio through OpenAI's gpt-4o-transcribe once recording
+stops.
 
 Provides:
   GET   /api/v1/events/{event_id}/presentations       — list presentations in an event
   POST  /api/v1/events/{event_id}/presentations       — create a presentation
   GET   /api/v1/presentations/{id}                    — get presentation detail
   PATCH /api/v1/presentations/{id}                    — save transcript / duration / status
+  POST  /api/v1/presentations/{id}/transcribe          — transcribe recorded audio accurately
 """
 
 from __future__ import annotations
@@ -19,12 +23,14 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from semeval.config import get_settings
 from semeval.db.supabase_client import get_supabase
 
 logger = structlog.get_logger(__name__)
+settings = get_settings()
 
 router = APIRouter(tags=["presentations"])
 
@@ -56,6 +62,10 @@ class PresentationUpdate(BaseModel):
     transcript_segments: list[TranscriptSegmentIn] | None = None
     duration_seconds: int | None = Field(default=None, ge=0)
     status: str | None = None
+
+
+class TranscribeResponse(BaseModel):
+    transcript_text: str
 
 
 class PresentationResponse(BaseModel):
@@ -182,3 +192,53 @@ async def update_presentation(
     _save_presentation(pres)
     logger.info("presentation_updated", presentation_id=presentation_id, status=pres["status"])
     return PresentationResponse(**pres)
+
+
+@router.post("/presentations/{presentation_id}/transcribe", response_model=TranscribeResponse)
+async def transcribe_presentation(
+    presentation_id: str,
+    audio: UploadFile = File(...),
+    duration_seconds: int = Form(...),
+) -> TranscribeResponse:
+    """
+    Accurately transcribe the recorded audio via OpenAI's gpt-4o-transcribe,
+    replacing the rough live Web-Speech draft as the transcript used for
+    scoring. Saves the result onto the presentation (status -> RECORDED).
+    """
+    pres = _fetch_presentation(presentation_id)
+    if not pres:
+        raise HTTPException(status_code=404, detail=f"Presentation '{presentation_id}' not found")
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="No audio data received.")
+
+    try:
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=settings.openai_api_key)
+        result = await client.audio.transcriptions.create(
+            model="gpt-4o-transcribe",
+            file=(
+                audio.filename or "recording.webm",
+                audio_bytes,
+                audio.content_type or "audio/webm",
+            ),
+        )
+        transcript_text = (result.text or "").strip()
+    except Exception as e:
+        logger.error("transcription_failed", presentation_id=presentation_id, error=str(e))
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {e}") from e
+
+    pres["transcript_text"] = transcript_text
+    pres["duration_seconds"] = duration_seconds
+    pres["status"] = "RECORDED"
+    pres["updated_at"] = datetime.now(UTC).isoformat()
+    _save_presentation(pres)
+
+    logger.info(
+        "presentation_transcribed",
+        presentation_id=presentation_id,
+        word_count=len(transcript_text.split()),
+    )
+    return TranscribeResponse(transcript_text=transcript_text)
