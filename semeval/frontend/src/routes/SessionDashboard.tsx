@@ -35,6 +35,10 @@ export default function SessionDashboard() {
       try {
         const res = await fetch(`${API_BASE}/api/v1/sessions`);
         if (!res.ok) throw new Error(`Failed to fetch sessions: ${res.status}`);
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("text/html")) {
+          throw new Error("Backend API returned HTML instead of JSON. Check backend service configuration.");
+        }
         const data: Session[] = await res.json();
         setSessions(data);
         setError(null);

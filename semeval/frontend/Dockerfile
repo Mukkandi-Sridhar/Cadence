@@ -3,6 +3,10 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Build-time environment variable for production API URL
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
 # Copy source
 COPY . .
 
@@ -18,9 +22,9 @@ RUN if [ -d "semeval/packages/shared-types" ]; then \
 # Build frontend
 RUN mkdir -p /tmp/out && \
     if [ -d "semeval/frontend" ]; then \
-      cd semeval/frontend && npm install && npm run build && cp -r dist/* /tmp/out/; \
+      cd semeval/frontend && npm install && VITE_API_URL=$VITE_API_URL npm run build && cp -r dist/* /tmp/out/; \
     elif [ -f "package.json" ]; then \
-      npm install && npm run build && cp -r dist/* /tmp/out/; \
+      npm install && VITE_API_URL=$VITE_API_URL npm run build && cp -r dist/* /tmp/out/; \
     fi
 
 # ── Serve stage ─────────────────────────────────────────────────────────────

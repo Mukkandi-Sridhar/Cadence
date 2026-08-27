@@ -84,6 +84,11 @@ export default function Evaluating() {
             throw new Error(`Evaluate API returned ${res.status}: ${errText}`);
           }
 
+          const contentType = res.headers.get("content-type") || "";
+          if (contentType.includes("text/html")) {
+            throw new Error("Evaluate API returned HTML instead of JSON. Backend service unreachable or unconfigured.");
+          }
+
           const apiResult = await res.json();
 
           // Map API response → EvaluationData shape
