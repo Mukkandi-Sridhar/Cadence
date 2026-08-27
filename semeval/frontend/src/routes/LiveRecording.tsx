@@ -12,8 +12,7 @@ import { useEvaluationStore, EvaluationData } from "../store/evaluationStore";
 import { useAudioCapture } from "../hooks/useAudioCapture";
 import { useEventSource } from "../hooks/useEventSource";
 import { requestScreenWakeLock, releaseScreenWakeLock } from "../lib/wakeLock";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { getApiBaseUrl } from "../lib/apiConfig";
 
 export default function LiveRecording() {
   const navigate = useNavigate();
@@ -113,7 +112,8 @@ export default function LiveRecording() {
     // Log RECORDING_STARTED event to session history
     const sid = useSessionStore.getState().sessionId;
     if (sid) {
-      await fetch(`${API_BASE}/api/v1/sessions/${sid}/events`, {
+      const baseUrl = getApiBaseUrl();
+      await fetch(`${baseUrl}/api/v1/sessions/${sid}/events`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_type: "RECORDING_STARTED", payload: { recording_id: newRecId, presenter: activePresenter.name } }),
@@ -132,10 +132,11 @@ export default function LiveRecording() {
     setStage("TRANSCRIBING", 20);
 
     const sid = useSessionStore.getState().sessionId || "active";
+    const baseUrl = getApiBaseUrl();
 
     // Post RECORDING_STOPPED event
     if (sid !== "active") {
-      await fetch(`${API_BASE}/api/v1/sessions/${sid}/events`, {
+      await fetch(`${baseUrl}/api/v1/sessions/${sid}/events`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_type: "RECORDING_STOPPED", payload: { recording_id: recordingId, elapsed_seconds: elapsedSeconds } }),
@@ -166,7 +167,7 @@ export default function LiveRecording() {
     let evalData: EvaluationData;
 
     try {
-      const res = await fetch(`${API_BASE}/api/v1/evaluate`, {
+      const res = await fetch(`${baseUrl}/api/v1/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(evalPayload),
@@ -291,7 +292,7 @@ export default function LiveRecording() {
 
     // Post EVALUATION_COMPLETE event
     if (sid !== "active") {
-      await fetch(`${API_BASE}/api/v1/sessions/${sid}/events`, {
+      await fetch(`${baseUrl}/api/v1/sessions/${sid}/events`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ event_type: "EVALUATION_COMPLETE", payload: { total_score: evalData.totalScore, presenter_name: evalData.presenterName } }),

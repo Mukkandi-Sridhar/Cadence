@@ -5,7 +5,7 @@ import { MicLevelMeter } from "../components/MicLevelMeter";
 import { useSessionStore } from "../store/sessionStore";
 import { useAudioCapture } from "../hooks/useAudioCapture";
 
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { getApiBaseUrl } from "../lib/apiConfig";
 
 export default function SessionSetup() {
   const navigate = useNavigate();
@@ -69,10 +69,11 @@ export default function SessionSetup() {
     }
 
     let sessionId = `sess-${Date.now()}`;
+    const baseUrl = getApiBaseUrl();
 
     // Create session in backend
     try {
-      const res = await fetch(`${API_BASE}/api/v1/sessions`, {
+      const res = await fetch(`${baseUrl}/api/v1/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

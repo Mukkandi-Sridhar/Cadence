@@ -1,8 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useRecordingStore, LiveTranscriptItem } from "../store/recordingStore";
 import { useEvaluationStore, EvaluationStage } from "../store/evaluationStore";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { getApiBaseUrl } from "../lib/apiConfig";
 
 export function useEventSource(recordingId: string | null) {
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -13,7 +12,8 @@ export function useEventSource(recordingId: string | null) {
   useEffect(() => {
     if (!recordingId || fatalRef.current) return;
 
-    const sseUrl = `${API_BASE}/api/v1/stream/${recordingId}`;
+    const baseUrl = getApiBaseUrl();
+    const sseUrl = `${baseUrl}/api/v1/stream/${recordingId}`;
 
     let es: EventSource;
     try {

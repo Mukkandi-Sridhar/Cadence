@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { Link } from "react-router-dom";
-
-const API_BASE = import.meta.env.VITE_API_URL || "";
+import { getApiBaseUrl } from "../lib/apiConfig";
 
 interface Session {
   id: string;
@@ -32,8 +31,9 @@ export default function SessionDashboard() {
   useEffect(() => {
     const fetchSessions = async () => {
       setLoading(true);
+      const baseUrl = getApiBaseUrl();
       try {
-        const res = await fetch(`${API_BASE}/api/v1/sessions`);
+        const res = await fetch(`${baseUrl}/api/v1/sessions`);
         if (!res.ok) throw new Error(`Failed to fetch sessions: ${res.status}`);
         const contentType = res.headers.get("content-type") || "";
         if (contentType.includes("text/html")) {
@@ -41,9 +41,20 @@ export default function SessionDashboard() {
         }
         const data: Session[] = await res.json();
         setSessions(data);
+        // Backup to localStorage
+        try { localStorage.setItem("cadence_sessions_backup", JSON.stringify(data)); } catch {}
         setError(null);
       } catch (err) {
         console.error("Dashboard fetch error:", err);
+        // Fallback to local storage backup if available
+        try {
+          const cached = localStorage.getItem("cadence_sessions_backup");
+          if (cached) {
+            setSessions(JSON.parse(cached));
+            setError(null);
+            return;
+          }
+        } catch {}
         setError("Could not connect to backend. Make sure the API is running.");
       } finally {
         setLoading(false);
@@ -57,11 +68,15 @@ export default function SessionDashboard() {
   const handleSelectSession = async (session: Session) => {
     setSelectedSession(session);
     setEventsLoading(true);
+    const baseUrl = getApiBaseUrl();
     try {
-      const res = await fetch(`${API_BASE}/api/v1/sessions/${session.id}/events`);
+      const res = await fetch(`${baseUrl}/api/v1/sessions/${session.id}/events`);
       if (res.ok) {
-        const data: SessionEvent[] = await res.json();
-        setEvents(data);
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("text/html")) {
+          const data: SessionEvent[] = await res.json();
+          setEvents(data);
+        }
       }
     } catch (err) {
       console.error("Events fetch error:", err);

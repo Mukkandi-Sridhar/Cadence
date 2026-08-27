@@ -68,6 +68,9 @@ services:
     staticPublishPath: dist
     routes:
       - type: rewrite
+        source: /api/*
+        destination: https://semeval-backend.onrender.com/api/*
+      - type: rewrite
         source: /*
         destination: /index.html
     envVars:
