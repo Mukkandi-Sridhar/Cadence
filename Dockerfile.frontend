@@ -16,16 +16,17 @@ RUN if [ -d "semeval/packages/shared-types" ]; then \
     fi
 
 # Build frontend
-RUN if [ -d "semeval/frontend" ]; then \
-      cd semeval/frontend && npm install && npm run build && cp -r dist /app/dist; \
+RUN mkdir -p /tmp/out && \
+    if [ -d "semeval/frontend" ]; then \
+      cd semeval/frontend && npm install && npm run build && cp -r dist/* /tmp/out/; \
     elif [ -f "package.json" ]; then \
-      npm install && npm run build && cp -r dist /app/dist; \
+      npm install && npm run build && cp -r dist/* /tmp/out/; \
     fi
 
 # ── Serve stage ─────────────────────────────────────────────────────────────
 FROM nginx:alpine
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /tmp/out /usr/share/nginx/html
 
 # SPA routing config
 RUN echo $'server {\n\
