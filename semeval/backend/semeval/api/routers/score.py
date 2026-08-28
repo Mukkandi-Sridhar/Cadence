@@ -20,9 +20,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from semeval.api.rate_limit import rate_limit_costly_endpoint
 from semeval.api.routers.presentations import _fetch_presentation, _save_presentation
 from semeval.config import get_settings
 from semeval.db.supabase_client import get_supabase
@@ -229,13 +230,28 @@ def _match_span_to_transcript(span: str, transcript_full: str) -> str:
     return span or transcript_full[:120]
 
 
+def _length_penalty_flags(word_count: int) -> tuple[bool, bool]:
+    """
+    Code-level backstop for the system prompt's own word-count-based
+    mandatory penalty rule (see _build_system_prompt) in case the LLM
+    doesn't apply it. Word-count only, deliberately: duration_seconds is
+    self-reported by the client (a dropped recording, a slow network tick,
+    or a browser timer bug all produce a bogus low value) and previously
+    triggered this same hard cap on its own, independent of word count —
+    an 84-word, fully on-topic transcript paired with a glitched 10-second
+    duration was crushed to the same score band as an empty transcript.
+    The transcript text itself is the one signal here that can't lie.
+    """
+    return word_count < 25, word_count < 40
+
+
 def _save_score(score: dict[str, Any]) -> None:
     _scores_cache[score["presentation_id"]] = score
     try:
         sb = get_supabase()
         sb.table("cadence_presentation_scores").upsert(score).execute()
     except Exception as err:
-        logger.debug("supabase_score_upsert_fallback", error=str(err))
+        logger.error("supabase_score_upsert_fallback", error=str(err))
 
 
 def _fetch_score(presentation_id: str) -> dict[str, Any] | None:
@@ -250,11 +266,15 @@ def _fetch_score(presentation_id: str) -> dict[str, Any] | None:
         if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
             return dict(res.data[0])
     except Exception as err:
-        logger.debug("supabase_get_score_fallback", error=str(err))
+        logger.error("supabase_get_score_fallback", error=str(err))
     return _scores_cache.get(presentation_id)
 
 
-@router.post("/presentations/{presentation_id}/score", response_model=ScoreResponse)
+@router.post(
+    "/presentations/{presentation_id}/score",
+    response_model=ScoreResponse,
+    dependencies=[Depends(rate_limit_costly_endpoint)],
+)
 async def score_presentation(presentation_id: str, req: ScoreRequest) -> ScoreResponse:
     """Score a presentation: 6 AI-scored dimensions + 1 human-scored dimension."""
     pres = _fetch_presentation(presentation_id)
@@ -287,8 +307,7 @@ async def score_presentation(presentation_id: str, req: ScoreRequest) -> ScoreRe
     llm_output: dict[str, Any] = llm_result["output"]
     llm_dims: list[dict[str, Any]] = llm_output.get("dimensions", [])
 
-    is_very_short = word_count < 25 or (duration_seconds > 0 and duration_seconds < 15)
-    is_short = word_count < 40 or (duration_seconds > 0 and duration_seconds < 25)
+    is_very_short, is_short = _length_penalty_flags(word_count)
 
     dimension_inputs: list[DimensionInput] = []
     dimension_evidence: dict[str, list[dict[str, Any]]] = {}

@@ -51,7 +51,7 @@ def _save_event(event: dict[str, Any]) -> None:
         sb = get_supabase()
         sb.table("cadence_events").upsert(event).execute()
     except Exception as err:
-        logger.debug("supabase_event_upsert_fallback", error=str(err))
+        logger.error("supabase_event_upsert_fallback", error=str(err))
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ async def list_events() -> list[EventResponse]:
         if res.data:
             return [EventResponse(**dict(e)) for e in res.data if isinstance(e, dict)]
     except Exception as err:
-        logger.debug("supabase_list_events_fallback", error=str(err))
+        logger.error("supabase_list_events_fallback", error=str(err))
 
     events = sorted(_events_cache.values(), key=lambda e: e["created_at"], reverse=True)
     return [EventResponse(**e) for e in events]
@@ -97,7 +97,7 @@ async def get_event(event_id: str) -> EventResponse:
         if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
             return EventResponse(**dict(res.data[0]))
     except Exception as err:
-        logger.debug("supabase_get_event_fallback", error=str(err))
+        logger.error("supabase_get_event_fallback", error=str(err))
 
     event = _events_cache.get(event_id)
     if not event:

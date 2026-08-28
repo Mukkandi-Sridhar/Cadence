@@ -9,6 +9,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from semeval.api.auth import BasicAuthGateMiddleware
 from semeval.api.routers import events, health, presentations, score
 from semeval.config import get_settings
 
@@ -24,6 +25,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning(
             "AUTH_DISABLED",
             message="DISABLE_AUTH=true — never run this in production",
+        )
+    elif not settings.access_password:
+        logger.warning(
+            "AUTH_ENABLED_BUT_NO_PASSWORD",
+            message=(
+                "DISABLE_AUTH=false but ACCESS_PASSWORD is unset — the auth "
+                "gate is a no-op and the site is effectively open."
+            ),
         )
     yield
     logger.info("semeval_stopping")
@@ -52,14 +61,19 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # ── Health Check Routes ──────────────────────────────────────────────────────
-    @app.get("/health", include_in_schema=False)
-    @app.get("/api/v1/health", include_in_schema=False)
-    async def direct_health_check() -> dict[str, str]:
-        return {"status": "ok", "version": "0.1.0"}
+    # ── Site-wide auth gate (no-ops unless DISABLE_AUTH=false + ACCESS_PASSWORD
+    # is set — see semeval/api/auth.py) ─────────────────────────────────────────
+    app.add_middleware(BasicAuthGateMiddleware)
 
     # ── API Routers ────────────────────────────────────────────────────────────
     app.include_router(health.router, prefix="/api/v1")
+
+    # Bare /health (no /api/v1 prefix) for infra that probes the root path —
+    # delegates to the real check above rather than a hardcoded "ok" stub, so
+    # a degraded Supabase connection can't hide behind two different routes.
+    @app.get("/health", include_in_schema=False)
+    async def bare_health_check() -> health.HealthResponse:
+        return await health.health()
     app.include_router(events.router, prefix="/api/v1")
     app.include_router(presentations.router, prefix="/api/v1")
     app.include_router(score.router, prefix="/api/v1")

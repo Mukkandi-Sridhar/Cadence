@@ -23,9 +23,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
+from semeval.api.rate_limit import rate_limit_costly_endpoint
 from semeval.config import get_settings
 from semeval.db.supabase_client import get_supabase
 
@@ -92,7 +93,7 @@ def _save_presentation(pres: dict[str, Any]) -> None:
         sb = get_supabase()
         sb.table("cadence_presentations").upsert(pres).execute()
     except Exception as err:
-        logger.debug("supabase_presentation_upsert_fallback", error=str(err))
+        logger.error("supabase_presentation_upsert_fallback", error=str(err))
 
 
 def _fetch_presentation(presentation_id: str) -> dict[str, Any] | None:
@@ -102,7 +103,7 @@ def _fetch_presentation(presentation_id: str) -> dict[str, Any] | None:
         if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
             return dict(res.data[0])
     except Exception as err:
-        logger.debug("supabase_get_presentation_fallback", error=str(err))
+        logger.error("supabase_get_presentation_fallback", error=str(err))
     return _presentations_cache.get(presentation_id)
 
 
@@ -124,7 +125,7 @@ async def list_presentations(event_id: str) -> list[PresentationResponse]:
         if res.data:
             return [PresentationResponse(**dict(p)) for p in res.data if isinstance(p, dict)]
     except Exception as err:
-        logger.debug("supabase_list_presentations_fallback", error=str(err))
+        logger.error("supabase_list_presentations_fallback", error=str(err))
 
     presentations = [p for p in _presentations_cache.values() if p.get("event_id") == event_id]
     presentations.sort(key=lambda p: p["created_at"], reverse=True)
@@ -194,7 +195,11 @@ async def update_presentation(
     return PresentationResponse(**pres)
 
 
-@router.post("/presentations/{presentation_id}/transcribe", response_model=TranscribeResponse)
+@router.post(
+    "/presentations/{presentation_id}/transcribe",
+    response_model=TranscribeResponse,
+    dependencies=[Depends(rate_limit_costly_endpoint)],
+)
 async def transcribe_presentation(
     presentation_id: str,
     audio: UploadFile = File(...),

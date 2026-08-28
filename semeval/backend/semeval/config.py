@@ -83,10 +83,25 @@ class Settings(BaseSettings):
 
     # ── Auth ──────────────────────────────────────────────────────────────────
     # IMPORTANT: disable_auth must be False in production. Enforced below.
+    # There's no user/account model in this app (a single shared tool for
+    # event organizers, not multi-tenant SaaS) so this is deliberately a
+    # single shared password via HTTP Basic Auth, not a JWT/login system —
+    # matches actual usage instead of building unused scaffolding.
     disable_auth: bool = Field(default=True)
-    jwt_secret: str = Field(default="change-me-in-production")
-    jwt_algorithm: str = Field(default="HS256")
-    jwt_expire_minutes: int = Field(default=60)
+    access_password: str = Field(default="")
+
+    @field_validator("access_password")
+    @classmethod
+    def _clean_access_password(cls, v: str) -> str:
+        return _strip_non_ascii(v, "ACCESS_PASSWORD")
+
+    # ── Rate limiting ─────────────────────────────────────────────────────────
+    # Applied only to endpoints that trigger a paid OpenAI call (transcribe,
+    # score) — everything else is free to call. Per-IP, in-memory: correct
+    # for this app's single-instance deployment (WEB_CONCURRENCY=1); would
+    # need a shared store if this ever scales to multiple instances.
+    rate_limit_requests: int = Field(default=10, ge=1)
+    rate_limit_window_s: int = Field(default=60, ge=1)
 
     # ── LLM ───────────────────────────────────────────────────────────────────
     llm_primary_provider: Literal["openai", "anthropic"] = Field(default="openai")
@@ -147,14 +162,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_production_safety(self) -> Settings:
-        """Block unsafe configs that could accidentally reach production."""
+        """
+        Block unsafe configs that could accidentally reach production. Only
+        fires when ENVIRONMENT=production is explicitly set — deliberately
+        not a blanket "not disable_auth" check, since that already burned
+        this app once tonight: a validator that raises on a plausible but
+        unintended config crashes the entire process at import time,
+        blocking every route rather than just the unsafe path.
+        """
         if self.environment == "production" and self.disable_auth:
             msg = "DISABLE_AUTH cannot be true in production environment"
             raise ValueError(msg)
-        if not self.disable_auth:
-            if self.jwt_secret == "change-me-in-production":  # noqa: S105
-                msg = "JWT_SECRET must be changed when DISABLE_AUTH=false"
-                raise ValueError(msg)
+        if self.environment == "production" and not self.disable_auth and not self.access_password:
+            msg = "ACCESS_PASSWORD must be set when DISABLE_AUTH=false in production"
+            raise ValueError(msg)
         return self
 
     @field_validator("llm_temperature")

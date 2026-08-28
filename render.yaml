@@ -1,96 +1,39 @@
 # Render Blueprint Configuration (https://render.com)
-# Deploys Semeval: PostgreSQL (pgvector), Redis, FastAPI Backend, ARQ Worker, and React Frontend.
+#
+# One Docker web service: FastAPI backend + the built React SPA served from
+# the same origin (root Dockerfile, multi-stage build — see that file).
+# Data lives in Supabase, not a Render-managed database, and there is no
+# separate worker/Redis service — an earlier design (Postgres + Redis + an
+# ARQ background worker) was scrapped in favor of this single synchronous
+# pipeline to keep Render's starter-tier build fast and the moving parts to
+# a minimum. If you're provisioning fresh from this file, you still need to
+# fill in the `sync: false` secrets below in the Render dashboard yourself —
+# they're deliberately not stored here or auto-generated.
 
 services:
-  # ── 1. Backend Web Service (FastAPI) ──────────────────────────────────────
   - type: web
-    name: semeval-backend
-    env: python
+    name: cadence
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     region: oregon
     plan: starter
-    rootDir: semeval/backend
-    buildCommand: pip install -e ".[dev]" && alembic upgrade head
-    startCommand: uvicorn semeval.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: DISABLE_AUTH
         value: "false"
-      - key: JWT_SECRET
-        generateValue: true
-      - key: DATABASE_URL
-        fromDatabase:
-          name: semeval-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: semeval-redis
-          property: connectionString
+      # Single shared HTTP Basic Auth password gating the whole site (see
+      # semeval/backend/semeval/api/auth.py) — there's no per-user login,
+      # this is one shared tool for a college event's organizers/judges.
+      - key: ACCESS_PASSWORD
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
-
-  # ── 2. ARQ Background Worker ──────────────────────────────────────────────
-  - type: worker
-    name: semeval-worker
-    env: python
-    region: oregon
-    plan: starter
-    rootDir: semeval/backend
-    buildCommand: pip install -e ".[dev]"
-    startCommand: python -m semeval.workers.worker
-    envVars:
-      - key: ENVIRONMENT
-        value: production
-      - key: DISABLE_AUTH
-        value: "false"
-      - key: DATABASE_URL
-        fromDatabase:
-          name: semeval-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: redis
-          name: semeval-redis
-          property: connectionString
-      - key: OPENAI_API_KEY
-        sync: false
-
-  # ── 3. Frontend Web Service (React Vite Static Site) ──────────────────────
-  - type: web
-    name: semeval-frontend
-    env: static
-    region: oregon
-    rootDir: semeval/frontend
-    buildCommand: cd ../packages/shared-types && npm install && npm run build && cd ../../frontend && npm ci && npm run build
-    staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /api/*
-        destination: https://semeval-backend.onrender.com/api/*
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    envVars:
-      - key: VITE_API_URL
-        fromService:
-          type: web
-          name: semeval-backend
-          property: url
-
-databases:
-  # ── 4. PostgreSQL 16 (with pgvector) ──────────────────────────────────────
-  - name: semeval-db
-    databaseName: semeval
-    user: semeval
-    region: oregon
-    plan: starter
-
-  # ── 5. Redis Instance ─────────────────────────────────────────────────────
-  - type: redis
-    name: semeval-redis
-    region: oregon
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
