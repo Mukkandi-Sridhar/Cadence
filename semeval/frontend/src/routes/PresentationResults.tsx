@@ -6,6 +6,11 @@ import { ScoreRadial } from "../components/ScoreRadial";
 import { EvidenceSpan } from "../components/EvidenceSpan";
 import { getApiBaseUrl } from "../lib/apiConfig";
 
+interface EvidenceItem {
+  span: string;
+  reason: string;
+}
+
 interface DimensionScore {
   dimension: string;
   weight: number;
@@ -13,6 +18,7 @@ interface DimensionScore {
   scaled_score: number | null;
   status: string;
   source: "AI" | "HUMAN";
+  evidence: EvidenceItem[];
 }
 
 interface FeedbackItem {
@@ -48,6 +54,19 @@ export default function PresentationResults() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
+  const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
+
+  function toggleDimension(dimension: string) {
+    setExpandedDims((prev) => {
+      const next = new Set(prev);
+      if (next.has(dimension)) {
+        next.delete(dimension);
+      } else {
+        next.add(dimension);
+      }
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!presId) return;
@@ -145,38 +164,59 @@ export default function PresentationResults() {
                   Dimension Breakdown
                 </h3>
                 <div className="flex flex-col gap-3">
-                  {score.dimension_scores.map((ds) => (
-                    <div key={ds.dimension} className="flex flex-col gap-1 border-b border-ink/5 pb-2">
-                      <div className="flex justify-between items-center gap-2 text-xs font-medium">
-                        <span className="text-ink flex items-center gap-1.5 min-w-0">
-                          <span className="truncate">{ds.dimension}</span>
-                          <span
-                            className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                              ds.source === "HUMAN" ? "bg-warning/20 text-warning" : "bg-info/20 text-info"
-                            }`}
-                          >
-                            {ds.source}
+                  {score.dimension_scores.map((ds) => {
+                    const hasEvidence = ds.evidence && ds.evidence.length > 0;
+                    const isExpanded = expandedDims.has(ds.dimension);
+                    return (
+                      <div key={ds.dimension} className="flex flex-col gap-1 border-b border-ink/5 pb-2">
+                        <button
+                          type="button"
+                          onClick={() => hasEvidence && toggleDimension(ds.dimension)}
+                          className={`flex justify-between items-center gap-2 text-xs font-medium text-left ${
+                            hasEvidence ? "cursor-pointer" : "cursor-default"
+                          }`}
+                          aria-expanded={isExpanded}
+                        >
+                          <span className="text-ink flex items-center gap-1.5 min-w-0">
+                            {hasEvidence && (
+                              <span className="shrink-0 text-ink/40 text-[10px]">{isExpanded ? "▾" : "▸"}</span>
+                            )}
+                            <span className="truncate">{ds.dimension}</span>
+                            <span
+                              className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                                ds.source === "HUMAN" ? "bg-warning/20 text-warning" : "bg-info/20 text-info"
+                              }`}
+                            >
+                              {ds.source}
+                            </span>
                           </span>
-                        </span>
-                        <span className="shrink-0 font-mono text-brand-700 font-bold">
-                          {ds.scaled_score !== null ? `${ds.scaled_score.toFixed(1)} / ${ds.weight}` : "Skipped"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-900">
-                          <div
-                            className="h-full bg-brand-500"
-                            style={{
-                              width: `${ds.scaled_score !== null ? (ds.scaled_score / ds.weight) * 100 : 0}%`,
-                            }}
-                          />
+                          <span className="shrink-0 font-mono text-brand-700 font-bold">
+                            {ds.scaled_score !== null ? `${ds.scaled_score.toFixed(1)} / ${ds.weight}` : "Skipped"}
+                          </span>
+                        </button>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-900">
+                            <div
+                              className="h-full bg-brand-500"
+                              style={{
+                                width: `${ds.scaled_score !== null ? (ds.scaled_score / ds.weight) * 100 : 0}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="font-mono text-[10px] text-ink/50">
+                            {ds.raw_sub_score !== null ? `${ds.raw_sub_score}/5` : "N/A"}
+                          </span>
                         </div>
-                        <span className="font-mono text-[10px] text-ink/50">
-                          {ds.raw_sub_score !== null ? `${ds.raw_sub_score}/5` : "N/A"}
-                        </span>
+                        {isExpanded && hasEvidence && (
+                          <div className="flex flex-col gap-2 mt-2">
+                            {ds.evidence.map((item, idx) => (
+                              <EvidenceSpan key={idx} span={item.span} reason={item.reason} />
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

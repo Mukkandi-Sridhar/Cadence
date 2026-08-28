@@ -127,10 +127,24 @@ in the transcript of the dimension being executed well.
 MANDATORY PENALTY RULES:
 - If total transcript word count is under 40 words, OR the talk is a single line/sentence: cap \
 EVERY dimension's raw_sub_score at 0.5-1.5, regardless of how polished that one line sounds.
+- If the transcript is ENTIRELY or SUBSTANTIALLY off-topic — it never meaningfully engages with \
+the stated TOPIC at all, even if what it does discuss is fluent, confident, and well-structured \
+— set EVERY dimension's raw_sub_score to 0.0, INCLUDING "Tone, Language & Clarity" and "Verbal \
+Communication & Confidence". Do not hedge upward into the 0.5-1.0 range out of politeness — a \
+transcript that discusses a completely different subject has zero evidence of executing THIS \
+topic on any dimension, and 0.0 is the accurate score, not a harsh one. Being articulate about \
+the wrong subject earns no credit anywhere: the presenter did not do the assigned task, full \
+stop. Do not let general fluency about an unrelated subject inflate these two dimensions — they \
+must be judged on whether the presenter communicated *this topic* clearly and confidently, which \
+is impossible to demonstrate about a topic never discussed.
+- Reserve the milder treatment below for a presentation that genuinely attempts the stated \
+topic but drifts partway through, covers it thinly, or blends it with tangents — not for one \
+that never engages with the topic at all (use the harder 0.0-1.0 cap above for that instead). \
+If the transcript partially drifts off-topic after a genuine on-topic attempt, penalize \
+"Content Depth & Explanation" and "Structure & Flow (Phases)" heavily, even if delivery \
+elsewhere is fine.
 - If a dimension has no explicit, quotable evidence in the transcript, set its status to \
 INSUFFICIENT_EVIDENCE and its raw_sub_score to 0.0-1.0 — do not guess generously.
-- If the transcript drifts off the stated topic, penalize "Content Depth & Explanation" and \
-"Structure & Flow (Phases)" heavily, even if delivery elsewhere is fine.
 - When evidence is ambiguous or borderline between two bands, ALWAYS choose the lower band.
 - Do not give 4.0+ on any dimension unless you can quote at least one specific, substantive \
 piece of transcript evidence that clearly earns it.
@@ -257,10 +271,18 @@ def _save_score(score: dict[str, Any]) -> None:
 def _fetch_score(presentation_id: str) -> dict[str, Any] | None:
     try:
         sb = get_supabase()
+        # Re-scoring a presentation inserts a new row rather than replacing
+        # the old one (each score gets its own uuid), so this must always
+        # take the newest — an unordered SELECT previously returned
+        # whichever row Supabase happened to return first, which in
+        # practice meant re-scoring a presentation kept showing its
+        # original score no matter how many times it was re-run.
         res = (
             sb.table("cadence_presentation_scores")
             .select("*")
             .eq("presentation_id", presentation_id)
+            .order("created_at", desc=True)
+            .limit(1)
             .execute()
         )
         if res.data and len(res.data) > 0 and isinstance(res.data[0], dict):
