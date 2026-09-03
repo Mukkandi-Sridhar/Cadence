@@ -71,9 +71,10 @@ def create_app() -> FastAPI:
     # Bare /health (no /api/v1 prefix) for infra that probes the root path —
     # delegates to the real check above rather than a hardcoded "ok" stub, so
     # a degraded Supabase connection can't hide behind two different routes.
-    @app.get("/health", include_in_schema=False)
+    @app.api_route("/health", methods=["GET", "HEAD"], include_in_schema=False)
     async def bare_health_check() -> health.HealthResponse:
         return await health.health()
+
     app.include_router(events.router, prefix="/api/v1")
     app.include_router(presentations.router, prefix="/api/v1")
     app.include_router(score.router, prefix="/api/v1")
@@ -98,7 +99,9 @@ def create_app() -> FastAPI:
 
         index_file = os.path.join(dist_dir, "index.html")
 
-        @app.get("/{full_path:path}", include_in_schema=False)
+        # HEAD alongside GET so uptime monitors (which default to HEAD) get a
+        # 200 for the site root instead of 405 Method Not Allowed.
+        @app.api_route("/{full_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
         async def serve_spa(full_path: str) -> FileResponse:
             # Do not intercept API, docs, or OpenAPI routes
             if full_path.startswith("api/") or full_path in ("docs", "redoc", "openapi.json"):

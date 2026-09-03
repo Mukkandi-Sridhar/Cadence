@@ -37,7 +37,11 @@ def _check_supabase() -> str:
         return f"error: {err}"
 
 
-@router.get("/health", response_model=HealthResponse)
+# GET *and* HEAD: uptime monitors default to HEAD, and FastAPI's APIRoute —
+# unlike plain Starlette's Route — does not add HEAD automatically for a GET
+# route. That mismatch made an external monitor report the whole site down
+# with 405 Method Not Allowed while it was serving users perfectly.
+@router.api_route("/health", methods=["GET", "HEAD"], response_model=HealthResponse)
 async def health() -> HealthResponse:
     """
     Liveness probe. Always returns 200 with status="ok" so Render/Docker
