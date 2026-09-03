@@ -1,10 +1,19 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import HomePage from './routes/HomePage'
 import EventDetail from './routes/EventDetail'
 import RecordPresentation from './routes/RecordPresentation'
 import PresentationResults from './routes/PresentationResults'
+import { warmUpBackend } from './lib/warmup'
 
 export default function App() {
+  // Start waking the (sleeping) free-tier backend immediately, so the cold
+  // start overlaps with the user reading the first screen rather than
+  // stalling their first tap.
+  useEffect(() => {
+    warmUpBackend()
+  }, [])
+
   return (
     <BrowserRouter>
       <Routes>

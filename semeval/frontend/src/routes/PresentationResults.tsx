@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { ScoreRadial } from "../components/ScoreRadial";
 import { EvidenceSpan } from "../components/EvidenceSpan";
-import { apiFetch, apiJson, ApiError } from "../lib/apiConfig";
+import { ResultsSkeleton } from "../components/Skeletons";
+import { apiFetch, apiJson } from "../lib/apiConfig";
+import { cacheKeys, dropCache } from "../lib/cache";
+import { useCachedResource } from "../hooks/useCachedResource";
 
 interface EvidenceItem {
   span: string;
@@ -50,18 +53,47 @@ interface PresentationDetail {
 export default function PresentationResults() {
   const { eventId, presId } = useParams<{ eventId: string; presId: string }>();
   const navigate = useNavigate();
-  const [presentation, setPresentation] = useState<PresentationDetail | null>(null);
-  const [score, setScore] = useState<ScoreData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
+
+  const fetchPresentation = useCallback(
+    () => apiJson<PresentationDetail>(`/api/v1/presentations/${presId}`, { timeoutMs: 60_000 }),
+    [presId]
+  );
+  const fetchScore = useCallback(
+    () => apiJson<ScoreData>(`/api/v1/presentations/${presId}/score`, { timeoutMs: 60_000 }),
+    [presId]
+  );
+
+  const { data: presentation } = useCachedResource<PresentationDetail>(
+    cacheKeys.presentation(presId ?? ""),
+    fetchPresentation,
+    Boolean(presId)
+  );
+  const {
+    data: score,
+    loading,
+    error: scoreError,
+  } = useCachedResource<ScoreData>(
+    cacheKeys.score(presId ?? ""),
+    fetchScore,
+    Boolean(presId)
+  );
+
+  // A missing score is an expected state ("not scored yet"), not a failure.
+  const error =
+    !loading && !score
+      ? scoreError ?? "No score found yet for this presentation."
+      : null;
 
   async function handleDeletePresentation() {
     if (!presId || !eventId) return;
     if (!window.confirm("Are you sure you want to delete this presentation and its score?")) return;
     try {
       await apiFetch(`/api/v1/presentations/${presId}`, { method: "DELETE" });
+      dropCache(cacheKeys.presentation(presId));
+      dropCache(cacheKeys.score(presId));
+      dropCache(cacheKeys.presentations(eventId));
       navigate(`/events/${eventId}`);
     } catch (err) {
       console.error("Delete error:", err);
@@ -81,47 +113,12 @@ export default function PresentationResults() {
     });
   }
 
-  useEffect(() => {
-    if (!presId) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const [presResult, scoreResult] = await Promise.allSettled([
-          apiJson<PresentationDetail>(`/api/v1/presentations/${presId}`, { timeoutMs: 60_000 }),
-          apiJson<ScoreData>(`/api/v1/presentations/${presId}/score`, { timeoutMs: 60_000 }),
-        ]);
-        if (cancelled) return;
-
-        if (presResult.status === "fulfilled") setPresentation(presResult.value);
-
-        if (scoreResult.status === "fulfilled") {
-          setScore(scoreResult.value);
-          setError(null);
-        } else {
-          const reason = scoreResult.reason;
-          // A 404 means "not scored yet" — an expected state, not a failure.
-          setError(
-            reason instanceof ApiError && reason.status === 404
-              ? "No score found yet for this presentation."
-              : "Could not load results. Check your internet connection and refresh."
-          );
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [presId]);
-
   if (loading) {
     return (
       <div className="min-h-screen bg-surface-950 text-ink flex flex-col">
         <Header />
-        <main className="flex-1 flex items-center justify-center text-ink/40 text-sm animate-pulse">
-          Loading results…
+        <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+          <ResultsSkeleton />
         </main>
         <Footer />
       </div>

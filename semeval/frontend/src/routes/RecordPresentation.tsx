@@ -9,6 +9,7 @@ import { usePresentationStore } from "../store/presentationStore";
 import { useSpeechTranscript } from "../hooks/useSpeechTranscript";
 import { requestScreenWakeLock, releaseScreenWakeLock } from "../lib/wakeLock";
 import { apiFetch, apiJson, ApiError } from "../lib/apiConfig";
+import { cacheKeys, dropCache } from "../lib/cache";
 
 interface PresentationDetail {
   id: string;
@@ -272,6 +273,12 @@ export default function RecordPresentation() {
         timeoutMs: 120_000,
         retries: 0,
       });
+      // The presentation, its (new) score and the event's list of statuses
+      // are all stale now — drop them so the results page fetches fresh
+      // rather than painting a cached "not scored yet".
+      dropCache(cacheKeys.score(presId));
+      dropCache(cacheKeys.presentation(presId));
+      dropCache(cacheKeys.presentations(eventId));
       navigate(`/events/${eventId}/presentations/${presId}/results`);
     } catch (err) {
       console.error("Scoring error:", err);
@@ -287,6 +294,9 @@ export default function RecordPresentation() {
     if (!window.confirm("Are you sure you want to delete this presentation?")) return;
     try {
       await apiFetch(`/api/v1/presentations/${presId}`, { method: "DELETE" });
+      dropCache(cacheKeys.presentation(presId));
+      dropCache(cacheKeys.score(presId));
+      dropCache(cacheKeys.presentations(eventId));
       resetDraft();
       navigate(`/events/${eventId}`);
     } catch (err) {

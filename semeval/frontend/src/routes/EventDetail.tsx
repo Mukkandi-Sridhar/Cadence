@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { PresentationCard } from "../components/PresentationCard";
 import { NewPresentationModal, NewPresentationData } from "../components/NewPresentationModal";
+import { CardGridSkeleton } from "../components/Skeletons";
 import { apiFetch, apiJson } from "../lib/apiConfig";
+import { cacheKeys, dropCache } from "../lib/cache";
+import { useCachedResource } from "../hooks/useCachedResource";
 
 interface EventItem {
   id: string;
@@ -24,44 +27,39 @@ interface PresentationItem {
 export default function EventDetail() {
   const { eventId } = useParams<{ eventId: string }>();
   const navigate = useNavigate();
-  const [event, setEvent] = useState<EventItem | null>(null);
-  const [presentations, setPresentations] = useState<PresentationItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!eventId) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      try {
-        const [ev, pres] = await Promise.all([
-          apiJson<EventItem>(`/api/v1/events/${eventId}`, { timeoutMs: 60_000 }),
-          apiJson<PresentationItem[]>(`/api/v1/events/${eventId}/presentations`, {
-            timeoutMs: 60_000,
-          }),
-        ]);
-        if (cancelled) return;
-        setEvent(ev);
-        setPresentations(pres);
-        setError(null);
-      } catch (err) {
-        if (cancelled) return;
-        console.error("Event detail fetch error:", err);
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Could not load this event. Check your internet connection."
-        );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId]);
+  const fetchEvent = useCallback(
+    () => apiJson<EventItem>(`/api/v1/events/${eventId}`, { timeoutMs: 60_000 }),
+    [eventId]
+  );
+  const fetchPresentations = useCallback(
+    () =>
+      apiJson<PresentationItem[]>(`/api/v1/events/${eventId}/presentations`, {
+        timeoutMs: 60_000,
+      }),
+    [eventId]
+  );
+
+  const { data: event } = useCachedResource<EventItem>(
+    cacheKeys.event(eventId ?? ""),
+    fetchEvent,
+    Boolean(eventId)
+  );
+  const {
+    data: presentations,
+    loading,
+    refreshing,
+    error,
+    mutate,
+  } = useCachedResource<PresentationItem[]>(
+    cacheKeys.presentations(eventId ?? ""),
+    fetchPresentations,
+    Boolean(eventId)
+  );
+
+  const list = presentations ?? [];
 
   async function handleCreate(data: NewPresentationData) {
     if (!eventId) return;
@@ -79,82 +77,109 @@ export default function EventDetail() {
         timeoutMs: 60_000,
       }
     );
+    mutate((current) => [created, ...(current ?? [])]);
     setShowModal(false);
     navigate(`/events/${eventId}/presentations/${created.id}/record`);
   }
 
   async function handleDeletePresentation(presId: string) {
+    // Optimistic: drop it from the list immediately so the tap feels
+    // instant, and put it back if the server rejects the delete.
+    const previous = list;
+    mutate((current) => (current ?? []).filter((p) => p.id !== presId));
+    setActionError(null);
     try {
       await apiFetch(`/api/v1/presentations/${presId}`, { method: "DELETE" });
-      setPresentations((prev) => prev.filter((p) => p.id !== presId));
+      dropCache(cacheKeys.presentation(presId));
+      dropCache(cacheKeys.score(presId));
     } catch (err) {
       console.error("Delete presentation error:", err);
-      setError("Failed to delete presentation. Please try again.");
+      mutate(previous);
+      setActionError("Failed to delete presentation. Please try again.");
     }
   }
+
+  const shownError = actionError ?? error;
 
   return (
     <div className="min-h-screen bg-surface-950 text-ink flex flex-col">
       <Header />
 
-      <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-8">
+      <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <div className="flex flex-col gap-6 sm:gap-8">
           <Link to="/" className="text-xs font-semibold text-brand-700 hover:text-brand-900 w-fit">
             ← All Events
           </Link>
 
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 glass-card p-6">
-            <div>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 glass-card p-5 sm:p-6">
+            <div className="min-w-0">
               <span className="text-xs font-bold uppercase tracking-wider text-brand-700">Event</span>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-ink">
-                {event?.name || (loading ? "Loading…" : "Event")}
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-ink break-words">
+                {event?.name ?? "…"}
               </h1>
-              {event && (
-                <p className="text-xs text-ink/60 mt-0.5">
-                  {new Date(event.event_date).toLocaleDateString(undefined, {
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })}{" "}
-                  · {presentations.length} presentation{presentations.length !== 1 ? "s" : ""}
-                </p>
-              )}
+              <p className="text-xs text-ink/60 mt-0.5 flex items-center gap-2 flex-wrap">
+                {event && (
+                  <span>
+                    {new Date(event.event_date).toLocaleDateString(undefined, {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}{" "}
+                    · {list.length} presentation{list.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {refreshing && (
+                  <>
+                    <span className="refresh-dot" aria-hidden="true" />
+                    <span className="sr-only">Refreshing</span>
+                  </>
+                )}
+              </p>
             </div>
-            <button onClick={() => setShowModal(true)} className="btn-primary py-3 px-6 whitespace-nowrap">
+            <button
+              onClick={() => setShowModal(true)}
+              className="btn-primary py-3 px-6 whitespace-nowrap w-full sm:w-auto"
+            >
               + New Presentation
             </button>
           </div>
 
-          {error && (
+          {shownError && (
             <div className="rounded-xl border border-danger/40 bg-danger/10 p-4 text-sm font-semibold text-danger flex items-center gap-2">
-              ⚠️ {error}
+              ⚠️ {shownError}
             </div>
           )}
 
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-ink/40 text-sm animate-pulse">
-              Loading presentations…
-            </div>
-          ) : presentations.length === 0 ? (
-            <div className="glass-card p-12 flex flex-col items-center justify-center text-center gap-4">
+            <CardGridSkeleton count={3} />
+          ) : list.length === 0 ? (
+            <div className="glass-card p-8 sm:p-12 flex flex-col items-center justify-center text-center gap-4 animate-fade-in">
               <p className="text-sm text-ink/40 italic">No presentations yet.</p>
               <button onClick={() => setShowModal(true)} className="btn-primary py-3 px-6">
                 Create the First Presentation
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {presentations.map((p) => (
-                <PresentationCard
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+              {list.map((p, i) => (
+                <div
                   key={p.id}
-                  eventId={eventId!}
-                  id={p.id}
-                  teamName={p.team_name}
-                  topic={p.topic}
-                  members={p.members}
-                  status={p.status}
-                  onDelete={handleDeletePresentation}
-                />
+                  className="animate-slide-up"
+                  style={{
+                    animationDelay: `${Math.min(i, 8) * 45}ms`,
+                    animationFillMode: "backwards",
+                  }}
+                >
+                  <PresentationCard
+                    eventId={eventId!}
+                    id={p.id}
+                    teamName={p.team_name}
+                    topic={p.topic}
+                    members={p.members}
+                    status={p.status}
+                    onDelete={handleDeletePresentation}
+                  />
+                </div>
               ))}
             </div>
           )}
