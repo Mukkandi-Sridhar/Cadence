@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { ScoreRadial } from "../components/ScoreRadial";
 import { EvidenceSpan } from "../components/EvidenceSpan";
-import { getApiBaseUrl } from "../lib/apiConfig";
+import { apiFetch, apiJson, ApiError } from "../lib/apiConfig";
 
 interface EvidenceItem {
   span: string;
@@ -49,12 +49,25 @@ interface PresentationDetail {
 
 export default function PresentationResults() {
   const { eventId, presId } = useParams<{ eventId: string; presId: string }>();
+  const navigate = useNavigate();
   const [presentation, setPresentation] = useState<PresentationDetail | null>(null);
   const [score, setScore] = useState<ScoreData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showTranscript, setShowTranscript] = useState(false);
   const [expandedDims, setExpandedDims] = useState<Set<string>>(new Set());
+
+  async function handleDeletePresentation() {
+    if (!presId || !eventId) return;
+    if (!window.confirm("Are you sure you want to delete this presentation and its score?")) return;
+    try {
+      await apiFetch(`/api/v1/presentations/${presId}`, { method: "DELETE" });
+      navigate(`/events/${eventId}`);
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("Failed to delete presentation. Please try again.");
+    }
+  }
 
   function toggleDimension(dimension: string) {
     setExpandedDims((prev) => {
@@ -70,28 +83,37 @@ export default function PresentationResults() {
 
   useEffect(() => {
     if (!presId) return;
-    const baseUrl = getApiBaseUrl();
+    let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const [presRes, scoreRes] = await Promise.all([
-          fetch(`${baseUrl}/api/v1/presentations/${presId}`),
-          fetch(`${baseUrl}/api/v1/presentations/${presId}/score`),
+        const [presResult, scoreResult] = await Promise.allSettled([
+          apiJson<PresentationDetail>(`/api/v1/presentations/${presId}`, { timeoutMs: 60_000 }),
+          apiJson<ScoreData>(`/api/v1/presentations/${presId}/score`, { timeoutMs: 60_000 }),
         ]);
-        if (presRes.ok) setPresentation(await presRes.json());
-        if (scoreRes.ok) {
-          setScore(await scoreRes.json());
+        if (cancelled) return;
+
+        if (presResult.status === "fulfilled") setPresentation(presResult.value);
+
+        if (scoreResult.status === "fulfilled") {
+          setScore(scoreResult.value);
           setError(null);
         } else {
-          setError("No score found yet for this presentation.");
+          const reason = scoreResult.reason;
+          // A 404 means "not scored yet" — an expected state, not a failure.
+          setError(
+            reason instanceof ApiError && reason.status === 404
+              ? "No score found yet for this presentation."
+              : "Could not load results. Check your internet connection and refresh."
+          );
         }
-      } catch (err) {
-        console.error("Results fetch error:", err);
-        setError("Could not load results. Make sure the API is running.");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [presId]);
 
   if (loading) {
@@ -134,13 +156,21 @@ export default function PresentationResults() {
       <main className="flex-1 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-8">
           <div className="flex flex-col gap-1 glass-card p-6">
-            <Link
-              to={`/events/${eventId}`}
-              className="text-xs font-semibold text-brand-700 hover:text-brand-900 w-fit"
-            >
-              ← Back to Event
-            </Link>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-ink mt-1">
+            <div className="flex items-center justify-between">
+              <Link
+                to={`/events/${eventId}`}
+                className="text-xs font-semibold text-brand-700 hover:text-brand-900 w-fit"
+              >
+                ← Back to Event
+              </Link>
+              <button
+                onClick={handleDeletePresentation}
+                className="text-xs font-semibold text-danger/80 hover:text-danger transition-colors flex items-center gap-1"
+              >
+                🗑️ Delete Presentation
+              </button>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-ink mt-2">
               {presentation?.team_name}
             </h1>
             <p className="text-sm text-ink/70 mt-0.5">{presentation?.topic}</p>

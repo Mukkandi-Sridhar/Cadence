@@ -26,23 +26,26 @@ interface SpeechRecognitionLike {
   onend: (() => void) | null;
 }
 
-const ERROR_MESSAGES: Record<string, string> = {
-  "not-allowed": "Microphone permission denied. Please allow microphone access and try again.",
-  "service-not-allowed": "Microphone permission denied. Please allow microphone access and try again.",
-  "audio-capture": "No microphone was found. Check that a microphone is connected and try again.",
-  network: "A network hiccup interrupted live transcription — reconnecting…",
-};
-// Fired constantly during ordinary pauses in speech — never surface as an error.
-const SILENT_ERRORS = new Set(["no-speech", "aborted"]);
+// Live captions are a best-effort convenience only — the transcript that
+// actually gets scored always comes from the recorded audio. So caption
+// failures are never surfaced as blocking errors.
+const SILENT_CAPTION_ERRORS = new Set(["no-speech", "aborted", "network"]);
 
 /**
- * Live browser-side transcription via the Web Speech API, plus a visual mic
- * level meter (from the same getUserMedia stream) so the presenter has some
- * confirmation audio is actually being picked up.
- * Chromium-only (Chrome/Edge) — no server-side ASR involved.
+ * Records the presentation audio (the source of truth for scoring) and, on
+ * Chromium, additionally shows rough live captions via the Web Speech API.
+ *
+ * Two deliberate properties:
+ *  - Recording NEVER depends on Web Speech. Captions are a nice-to-have that
+ *    is missing on Safari/Firefox and flaky even on Chrome (it needs its own
+ *    connection to Google's servers); gating recording on it would break the
+ *    whole feature for no reason.
+ *  - Audio chunks accumulate ACROSS pause/resume cycles, so stopping always
+ *    yields the complete recording from the very beginning, not just the
+ *    latest segment.
  */
 export function useSpeechTranscript() {
-  const [isSupported] = useState(() => {
+  const [captionsSupported] = useState(() => {
     if (typeof window === "undefined") return false;
     const w = window as unknown as Record<string, unknown>;
     return Boolean(w.SpeechRecognition || w.webkitSpeechRecognition);
@@ -60,7 +63,10 @@ export function useSpeechTranscript() {
   const meterFrameRef = useRef<number | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  // Accumulates across every start/stop cycle for this presentation — only
+  // cleared explicitly via resetAudio() when a genuinely new take begins.
   const recordedChunksRef = useRef<Blob[]>([]);
+  const recordedMimeRef = useRef<string>("audio/webm");
 
   const addTranscriptItem = usePresentationStore((s) => s.addTranscriptItem);
   const setInterimText = usePresentationStore((s) => s.setInterimText);
@@ -110,59 +116,25 @@ export function useSpeechTranscript() {
     tick();
   }, []);
 
-  const start = useCallback(async (): Promise<boolean> => {
-    setPermissionError(null);
-
-    if (!isSupported) {
-      setPermissionError(
-        "Live transcription needs a Chromium-based browser (Chrome, Edge). Safari/Firefox aren't supported yet."
-      );
-      return false;
-    }
-
-    let stream: MediaStream;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-    } catch {
-      setPermissionError("Microphone permission denied. Please allow microphone access and try again.");
-      return false;
-    }
-
-    startMeter(stream);
-
-    // Record the raw audio too — the live captions below are just a rough
-    // real-time preview; the accurate transcript actually used for scoring
-    // comes from running this recording through gpt-4o-transcribe on Stop.
-    recordedChunksRef.current = [];
-    try {
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
-      };
-      mediaRecorder.start();
-      mediaRecorderRef.current = mediaRecorder;
-    } catch (err) {
-      console.warn("MediaRecorder unavailable — accurate transcription will be skipped:", err);
-    }
+  /** Best-effort live captions. Never blocks or fails recording. */
+  const startCaptions = useCallback(() => {
+    if (!captionsSupported) return;
 
     const w = window as unknown as Record<string, unknown>;
     const SpeechRecognitionCtor = (w.SpeechRecognition ||
       w.webkitSpeechRecognition) as new () => SpeechRecognitionLike;
-    const recognition = new SpeechRecognitionCtor();
+
+    let recognition: SpeechRecognitionLike;
+    try {
+      recognition = new SpeechRecognitionCtor();
+    } catch {
+      return;
+    }
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
-    startTimeRef.current = Date.now() - usePresentationStore.getState().elapsedSeconds * 1000;
-
     recognition.onresult = (event) => {
-      // Speech is clearly getting through — clear any stale transient error.
-      setPermissionError(null);
-
       const results = event.results as unknown as SpeechRecognitionResultLike[];
       let interim = "";
       for (let i = event.resultIndex; i < results.length; i++) {
@@ -187,21 +159,15 @@ export function useSpeechTranscript() {
     };
 
     recognition.onerror = (err) => {
-      if (SILENT_ERRORS.has(err.error)) {
-        return;
+      if (!SILENT_CAPTION_ERRORS.has(err.error)) {
+        console.warn("Live caption notice (recording is unaffected):", err.error);
       }
-      const message = ERROR_MESSAGES[err.error];
-      if (message) {
-        setPermissionError(message);
-      }
-      console.warn("Speech recognition notice:", err.error);
     };
 
     recognition.onend = () => {
       // Chrome ends recognition after a pause in speech — auto-restart while
-      // still recording so the presenter doesn't have to notice or care.
-      // Guarded against overlapping start() calls firing InvalidStateError
-      // when onend/onerror land close together.
+      // still recording. Guarded against overlapping start() calls firing
+      // InvalidStateError when onend/onerror land close together.
       if (recognitionRef.current !== recognition) return;
       if (!usePresentationStore.getState().isRecording) return;
       if (restartingRef.current) return;
@@ -221,16 +187,93 @@ export function useSpeechTranscript() {
     recognitionRef.current = recognition;
     try {
       recognition.start();
+    } catch {
+      recognitionRef.current = null;
+    }
+  }, [captionsSupported, addTranscriptItem, setInterimText]);
+
+  /** Clears accumulated audio — call when starting a genuinely new take. */
+  const resetAudio = useCallback(() => {
+    recordedChunksRef.current = [];
+  }, []);
+
+  const start = useCallback(async (): Promise<boolean> => {
+    setPermissionError(null);
+
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setPermissionError(
+        "This browser can't record audio. Please use a recent version of Chrome, Edge, or Safari."
+      );
+      return false;
+    }
+
+    let stream: MediaStream;
+    try {
+      // Mono + 16kHz is what speech models want anyway, and keeps the upload
+      // small enough to survive a slow connection.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          sampleRate: 16000,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      streamRef.current = stream;
     } catch (err) {
-      console.warn("Speech recognition failed to start:", err);
-      setPermissionError("Could not start live transcription.");
+      const name = (err as { name?: string })?.name;
+      setPermissionError(
+        name === "NotFoundError" || name === "DevicesNotFoundError"
+          ? "No microphone found. Connect a microphone and try again."
+          : "Microphone permission denied. Allow microphone access in your browser and try again."
+      );
+      return false;
+    }
+
+    startMeter(stream);
+
+    // The recorded audio — not the live captions — is what gets scored.
+    try {
+      const preferred = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4", // Safari
+      ];
+      const mimeType = preferred.find((t) => MediaRecorder.isTypeSupported(t));
+      const mediaRecorder = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        // ~24kbps mono opus: plenty for speech recognition, roughly 5x smaller
+        // than Chrome's default, which matters a lot on a slow uplink.
+        audioBitsPerSecond: 24000,
+      });
+      recordedMimeRef.current = mediaRecorder.mimeType || mimeType || "audio/webm";
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+      // Flush every 5s so a crash/refresh loses at most a few seconds.
+      mediaRecorder.start(5000);
+      mediaRecorderRef.current = mediaRecorder;
+    } catch (err) {
+      console.error("MediaRecorder failed to start:", err);
+      setPermissionError("Could not start audio recording on this browser.");
       stopMeter();
       return false;
     }
-    return true;
-  }, [addTranscriptItem, setInterimText, isSupported, startMeter, stopMeter]);
 
-  /** Stops recognition + recording, returns the recorded audio (or null if unavailable). */
+    // Keep caption timestamps continuous across pause/resume.
+    startTimeRef.current = Date.now() - usePresentationStore.getState().elapsedSeconds * 1000;
+    startCaptions();
+
+    return true;
+  }, [startMeter, stopMeter, startCaptions]);
+
+  /**
+   * Stops recognition + recording and returns the COMPLETE recording so far
+   * (every segment across all pause/resume cycles), or null if no audio was
+   * captured at all.
+   */
   const stop = useCallback(async (): Promise<Blob | null> => {
     const recognition = recognitionRef.current;
     recognitionRef.current = null; // prevents the onend auto-restart
@@ -245,27 +288,32 @@ export function useSpeechTranscript() {
 
     const mediaRecorder = mediaRecorderRef.current;
     mediaRecorderRef.current = null;
-    let audioBlob: Blob | null = null;
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      audioBlob = await new Promise<Blob | null>((resolve) => {
-        mediaRecorder.onstop = () => {
-          const chunks = recordedChunksRef.current;
-          recordedChunksRef.current = [];
-          resolve(chunks.length > 0 ? new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" }) : null);
-        };
+      await new Promise<void>((resolve) => {
+        mediaRecorder.onstop = () => resolve();
         try {
           mediaRecorder.stop();
         } catch {
-          resolve(null);
+          resolve();
         }
       });
     }
 
-    // Stop the underlying tracks only after the recorder has flushed its
-    // final chunk, so the last few seconds of audio aren't cut off.
+    // Stop the mic only after the recorder has flushed its final chunk, so
+    // the last few seconds of audio aren't cut off.
     stopMeter();
-    return audioBlob;
+
+    const chunks = recordedChunksRef.current;
+    if (chunks.length === 0) return null;
+    return new Blob(chunks, { type: recordedMimeRef.current });
   }, [setInterimText, stopMeter]);
 
-  return { start, stop, isSupported, permissionError, micLevel };
+  return {
+    start,
+    stop,
+    resetAudio,
+    captionsSupported,
+    permissionError,
+    micLevel,
+  };
 }

@@ -265,7 +265,29 @@ def _save_score(score: dict[str, Any]) -> None:
         sb = get_supabase()
         sb.table("cadence_presentation_scores").upsert(score).execute()
     except Exception as err:
-        logger.error("supabase_score_upsert_fallback", error=str(err))
+        err_str = str(err)
+        if "23503" in err_str or "cadence_presentation_scores_presentation_id_fkey" in err_str:
+            presentation_id = score.get("presentation_id")
+            if presentation_id:
+                from semeval.api.routers.presentations import (
+                    _fetch_presentation,
+                    _save_presentation,
+                )
+
+                parent_pres = _fetch_presentation(presentation_id)
+                if parent_pres:
+                    logger.info(
+                        "syncing_cached_parent_presentation_to_supabase",
+                        presentation_id=presentation_id,
+                    )
+                    _save_presentation(parent_pres)
+                    try:
+                        sb = get_supabase()
+                        sb.table("cadence_presentation_scores").upsert(score).execute()
+                        return
+                    except Exception as retry_err:
+                        logger.error("supabase_score_upsert_retry_failed", error=str(retry_err))
+        logger.error("supabase_score_upsert_fallback", error=err_str)
 
 
 def _fetch_score(presentation_id: str) -> dict[str, Any] | None:
@@ -292,6 +314,17 @@ def _fetch_score(presentation_id: str) -> dict[str, Any] | None:
     return _scores_cache.get(presentation_id)
 
 
+def _delete_score(presentation_id: str) -> None:
+    _scores_cache.pop(presentation_id, None)
+    try:
+        sb = get_supabase()
+        sb.table("cadence_presentation_scores").delete().eq(
+            "presentation_id", presentation_id
+        ).execute()
+    except Exception as err:
+        logger.error("supabase_score_delete_fallback", error=str(err))
+
+
 @router.post(
     "/presentations/{presentation_id}/score",
     response_model=ScoreResponse,
@@ -305,6 +338,20 @@ async def score_presentation(presentation_id: str, req: ScoreRequest) -> ScoreRe
 
     transcript_full = str(pres.get("transcript_text") or "").strip()
     word_count = len(transcript_full.split()) if transcript_full else 0
+
+    # Refuse rather than burn a paid LLM call producing a meaningless ~4/100
+    # for a presentation that was never actually captured. This used to be
+    # reachable from the UI: the transcript was saved fire-and-forget, so
+    # clicking "Get Score" quickly enough scored an empty transcript.
+    if not transcript_full:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This presentation has no transcript yet, so there is nothing to score. "
+                "Record the presentation and wait for the transcript to save, then try again."
+            ),
+        )
+
     duration_seconds = int(pres.get("duration_seconds") or 0)
     actual_minutes = max(0.1, duration_seconds / 60.0)
     wpm = round(word_count / actual_minutes, 1) if duration_seconds else 0.0

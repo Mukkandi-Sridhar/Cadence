@@ -16,6 +16,12 @@ interface PresentationDraftState {
   interimText: string;
   humanScore: number | null;
   humanNote: string;
+  /**
+   * True once the transcript has been confirmed saved on the server. Scoring
+   * reads the transcript from the server, so it must not run until this is
+   * true — otherwise the LLM is handed an empty transcript.
+   */
+  transcriptSaved: boolean;
 
   beginDraft: (presentationId: string) => void;
   startRecording: () => void;
@@ -24,6 +30,7 @@ interface PresentationDraftState {
   addTranscriptItem: (item: TranscriptItem) => void;
   setTranscript: (items: TranscriptItem[]) => void;
   setInterimText: (text: string) => void;
+  setTranscriptSaved: (saved: boolean) => void;
   setHumanScore: (score: number | null) => void;
   setHumanNote: (note: string) => void;
   resetDraft: () => void;
@@ -36,6 +43,7 @@ const EMPTY_DRAFT = {
   interimText: "",
   humanScore: null as number | null,
   humanNote: "",
+  transcriptSaved: false,
 };
 
 export const usePresentationStore = create<PresentationDraftState>()(
@@ -51,10 +59,16 @@ export const usePresentationStore = create<PresentationDraftState>()(
       startRecording: () => set({ isRecording: true }),
       stopRecording: () => set({ isRecording: false, interimText: "" }),
       tickElapsed: () => set((s) => ({ elapsedSeconds: s.elapsedSeconds + 1 })),
+      // Any new speech invalidates the previously saved server-side transcript.
       addTranscriptItem: (item) =>
-        set((s) => ({ transcript: [...s.transcript, item], interimText: "" })),
+        set((s) => ({
+          transcript: [...s.transcript, item],
+          interimText: "",
+          transcriptSaved: false,
+        })),
       setTranscript: (items) => set({ transcript: items, interimText: "" }),
       setInterimText: (text) => set({ interimText: text }),
+      setTranscriptSaved: (saved) => set({ transcriptSaved: saved }),
       setHumanScore: (score) => set({ humanScore: score }),
       setHumanNote: (note) => set({ humanNote: note }),
       resetDraft: () => set({ presentationId: null, ...EMPTY_DRAFT }),
@@ -69,6 +83,8 @@ export const usePresentationStore = create<PresentationDraftState>()(
         humanNote: s.humanNote,
         // isRecording / interimText intentionally excluded — a page refresh
         // should never resume in a "still recording" state.
+        // transcriptSaved is also excluded: the in-browser audio buffer is
+        // gone after a refresh, so the draft must re-save before scoring.
       }),
     }
   )

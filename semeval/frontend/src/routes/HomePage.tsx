@@ -4,7 +4,7 @@ import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { EventCard } from "../components/EventCard";
 import { NewEventModal } from "../components/NewEventModal";
-import { getApiBaseUrl } from "../lib/apiConfig";
+import { apiJson } from "../lib/apiConfig";
 
 interface EventItem {
   id: string;
@@ -24,15 +24,10 @@ export default function HomePage() {
 
   useEffect(() => {
     const fetchEvents = async () => {
-      const baseUrl = getApiBaseUrl();
       try {
-        const res = await fetch(`${baseUrl}/api/v1/events`);
-        if (!res.ok) throw new Error(`Failed to fetch events: ${res.status}`);
-        const contentType = res.headers.get("content-type") || "";
-        if (contentType.includes("text/html")) {
-          throw new Error("Backend API returned HTML instead of JSON. Check backend service configuration.");
-        }
-        const data: EventItem[] = await res.json();
+        // Generous timeout: the free-tier backend cold-starts after idling,
+        // and the first request of the day can take most of a minute.
+        const data = await apiJson<EventItem[]>("/api/v1/events", { timeoutMs: 60_000 });
         setEvents(data);
         try {
           localStorage.setItem(CACHE_KEY, JSON.stringify(data));
@@ -52,7 +47,11 @@ export default function HomePage() {
         } catch {
           /* ignore */
         }
-        setError("Could not connect to backend. Make sure the API is running.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not connect to the server. Check your internet connection."
+        );
       } finally {
         setLoading(false);
       }
@@ -61,14 +60,12 @@ export default function HomePage() {
   }, []);
 
   async function handleCreate(name: string, eventDate: string) {
-    const baseUrl = getApiBaseUrl();
-    const res = await fetch(`${baseUrl}/api/v1/events`, {
+    const data = await apiJson<EventItem>("/api/v1/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, event_date: eventDate }),
+      timeoutMs: 60_000,
     });
-    if (!res.ok) throw new Error(`Failed to create event: ${res.status}`);
-    const data: EventItem = await res.json();
     setEvents((prev) => [data, ...prev]);
     setShowModal(false);
     navigate(`/events/${data.id}`);

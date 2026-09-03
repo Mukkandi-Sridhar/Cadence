@@ -40,6 +40,9 @@ _presentations_cache: dict[str, dict[str, Any]] = {}
 
 PRESENTATION_STATUSES = ("DRAFT", "RECORDING", "RECORDED", "SCORED")
 
+# OpenAI's transcription endpoint rejects uploads larger than 25MB.
+_MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
 
@@ -93,7 +96,26 @@ def _save_presentation(pres: dict[str, Any]) -> None:
         sb = get_supabase()
         sb.table("cadence_presentations").upsert(pres).execute()
     except Exception as err:
-        logger.error("supabase_presentation_upsert_fallback", error=str(err))
+        err_str = str(err)
+        if "23503" in err_str or "cadence_presentations_event_id_fkey" in err_str:
+            event_id = pres.get("event_id")
+            if event_id:
+                from semeval.api.routers.events import _events_cache, _save_event
+
+                parent_event = _events_cache.get(event_id)
+                if parent_event:
+                    logger.info("syncing_cached_parent_event_to_supabase", event_id=event_id)
+                    _save_event(parent_event)
+                    try:
+                        sb = get_supabase()
+                        sb.table("cadence_presentations").upsert(pres).execute()
+                        return
+                    except Exception as retry_err:
+                        logger.error(
+                            "supabase_presentation_upsert_retry_failed",
+                            error=str(retry_err),
+                        )
+        logger.error("supabase_presentation_upsert_fallback", error=err_str)
 
 
 def _fetch_presentation(presentation_id: str) -> dict[str, Any] | None:
@@ -105,6 +127,19 @@ def _fetch_presentation(presentation_id: str) -> dict[str, Any] | None:
     except Exception as err:
         logger.error("supabase_get_presentation_fallback", error=str(err))
     return _presentations_cache.get(presentation_id)
+
+
+def _delete_presentation(presentation_id: str) -> None:
+    _presentations_cache.pop(presentation_id, None)
+    try:
+        sb = get_supabase()
+        sb.table("cadence_presentations").delete().eq("id", presentation_id).execute()
+    except Exception as err:
+        logger.error("supabase_presentation_delete_fallback", error=str(err))
+
+    from semeval.api.routers.score import _delete_score
+
+    _delete_score(presentation_id)
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -195,6 +230,16 @@ async def update_presentation(
     return PresentationResponse(**pres)
 
 
+@router.delete("/presentations/{presentation_id}", status_code=204)
+async def delete_presentation(presentation_id: str) -> None:
+    """Delete a presentation by ID."""
+    pres = _fetch_presentation(presentation_id)
+    if not pres:
+        raise HTTPException(status_code=404, detail=f"Presentation '{presentation_id}' not found")
+    _delete_presentation(presentation_id)
+    logger.info("presentation_deleted", presentation_id=presentation_id)
+
+
 @router.post(
     "/presentations/{presentation_id}/transcribe",
     response_model=TranscribeResponse,
@@ -218,6 +263,19 @@ async def transcribe_presentation(
     if not audio_bytes:
         raise HTTPException(status_code=400, detail="No audio data received.")
 
+    # The transcription API rejects files over 25MB. At the client's 24kbps
+    # mono encoding that's ~2 hours of speech, so hitting this means something
+    # is wrong — say so plainly instead of forwarding an opaque provider error.
+    if len(audio_bytes) > _MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"Recording is too large to transcribe "
+                f"({len(audio_bytes) / 1_000_000:.1f}MB, limit 25MB). "
+                "Please record in shorter segments."
+            ),
+        )
+
     try:
         from openai import AsyncOpenAI
 
@@ -234,6 +292,17 @@ async def transcribe_presentation(
     except Exception as e:
         logger.error("transcription_failed", presentation_id=presentation_id, error=str(e))
         raise HTTPException(status_code=502, detail=f"Transcription failed: {e}") from e
+
+    # Never let a silent/empty result wipe a transcript that's already saved —
+    # the client falls back to its live captions in that case, and clobbering
+    # good text with "" here would leave nothing to score.
+    if not transcript_text and pres.get("transcript_text"):
+        logger.warning(
+            "transcription_empty_kept_existing",
+            presentation_id=presentation_id,
+            audio_bytes=len(audio_bytes),
+        )
+        return TranscribeResponse(transcript_text=str(pres["transcript_text"]))
 
     pres["transcript_text"] = transcript_text
     pres["duration_seconds"] = duration_seconds

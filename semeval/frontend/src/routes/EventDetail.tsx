@@ -4,7 +4,7 @@ import { Header } from "../components/Header";
 import { Footer } from "../components/Footer";
 import { PresentationCard } from "../components/PresentationCard";
 import { NewPresentationModal, NewPresentationData } from "../components/NewPresentationModal";
-import { getApiBaseUrl } from "../lib/apiConfig";
+import { apiFetch, apiJson } from "../lib/apiConfig";
 
 interface EventItem {
   id: string;
@@ -32,43 +32,65 @@ export default function EventDetail() {
 
   useEffect(() => {
     if (!eventId) return;
-    const baseUrl = getApiBaseUrl();
+    let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const [evRes, presRes] = await Promise.all([
-          fetch(`${baseUrl}/api/v1/events/${eventId}`),
-          fetch(`${baseUrl}/api/v1/events/${eventId}/presentations`),
+        const [ev, pres] = await Promise.all([
+          apiJson<EventItem>(`/api/v1/events/${eventId}`, { timeoutMs: 60_000 }),
+          apiJson<PresentationItem[]>(`/api/v1/events/${eventId}/presentations`, {
+            timeoutMs: 60_000,
+          }),
         ]);
-        if (evRes.ok) setEvent(await evRes.json());
-        if (presRes.ok) setPresentations(await presRes.json());
+        if (cancelled) return;
+        setEvent(ev);
+        setPresentations(pres);
         setError(null);
       } catch (err) {
+        if (cancelled) return;
         console.error("Event detail fetch error:", err);
-        setError("Could not load this event. Make sure the API is running.");
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Could not load this event. Check your internet connection."
+        );
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [eventId]);
 
   async function handleCreate(data: NewPresentationData) {
     if (!eventId) return;
-    const baseUrl = getApiBaseUrl();
-    const res = await fetch(`${baseUrl}/api/v1/events/${eventId}/presentations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        team_name: data.teamName,
-        members: data.members,
-        topic: data.topic,
-        custom_instructions: data.customInstructions,
-      }),
-    });
-    if (!res.ok) throw new Error(`Failed to create presentation: ${res.status}`);
-    const created = await res.json();
+    const created = await apiJson<PresentationItem>(
+      `/api/v1/events/${eventId}/presentations`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          team_name: data.teamName,
+          members: data.members,
+          topic: data.topic,
+          custom_instructions: data.customInstructions,
+        }),
+        timeoutMs: 60_000,
+      }
+    );
     setShowModal(false);
     navigate(`/events/${eventId}/presentations/${created.id}/record`);
+  }
+
+  async function handleDeletePresentation(presId: string) {
+    try {
+      await apiFetch(`/api/v1/presentations/${presId}`, { method: "DELETE" });
+      setPresentations((prev) => prev.filter((p) => p.id !== presId));
+    } catch (err) {
+      console.error("Delete presentation error:", err);
+      setError("Failed to delete presentation. Please try again.");
+    }
   }
 
   return (
@@ -131,6 +153,7 @@ export default function EventDetail() {
                   topic={p.topic}
                   members={p.members}
                   status={p.status}
+                  onDelete={handleDeletePresentation}
                 />
               ))}
             </div>
